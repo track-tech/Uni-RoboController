@@ -1,0 +1,36 @@
+# 构建产物
+build/
+cmake_build/
+.gradle/
+local.properties
+*.apk
+*.aab
+*.so
+*.a
+*.o
+*.obj
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 工具/缓存
+.cache/
+tmp/
+output/
+logs/
+*.log
+
+# 编辑器/系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 模型包/录像等大文件（按需保留示例）
+*.zip
+*.mcap
+*.bag
+*.db3

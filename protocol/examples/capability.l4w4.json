@@ -1,0 +1,88 @@
+{
+  "schema": "urc-capability/v1",
+  "robot_id": "l4w4-036",
+  "name": "L4W4",
+  "form": "wheeled_quadruped",
+  "vendor": "zhinao",
+  "model": "l4w4",
+  "frames": {"odom": "odom", "map": "map", "base": "base_link"},
+  "transport": {"ctrl_port": 47800, "video_port": 47801, "depth_port": 47802, "map_port": 47803},
+  "rates": {"control_hz": 100, "servo_hz": 200, "policy_hz": 50, "telemetry_hz": 20},
+  "control": {
+    "modes": [
+      {
+        "id": 0,
+        "name": "rl_velocity",
+        "interface": "velocity",
+        "channels": [
+          {"id": "body.linear_x", "range": [-2.0, 2.0], "deadband": 0.05},
+          {"id": "body.linear_y", "range": [-1.0, 1.0], "deadband": 0.05},
+          {"id": "body.angular_z", "range": [-1.5, 1.5], "deadband": 0.05}
+        ],
+        "deadman": true
+      }
+    ],
+    "actions": [
+      {"id": "action.get_up", "label": "站立", "risk": "medium", "backend_key": "RB_A"},
+      {"id": "action.locomotion", "label": "RL 运动", "risk": "medium", "backend_key": "RB_B"},
+      {"id": "action.get_down", "label": "趴下", "risk": "medium", "backend_key": "LB"},
+      {"id": "action.passive", "label": "被动", "risk": "low", "backend_key": "LB_X"},
+      {"id": "action.estop", "label": "急停", "risk": "high", "backend_key": "PATCH_SAFE_DAMPING", "latched": true},
+      {"id": "action.select_policy", "label": "策略选择", "risk": "medium", "params": ["policy_id"]}
+    ]
+  },
+  "limits": {
+    "max_linear_speed": 2.0,
+    "max_lateral_speed": 1.0,
+    "max_angular_speed": 1.5,
+    "torque": [150, 150, 150, 30, 150, 150, 150, 30, 150, 150, 150, 30, 150, 150, 150, 30]
+  },
+  "timeouts": {"command_ttl_ms": 200, "watchdog_ms": 300, "state_stale_ms": 500},
+  "safety": {
+    "physical_estop": true,
+    "rc_priority": true,
+    "safe_state": "damping",
+    "actions": {"zero": "PATCH_SAFE_ZERO", "damping": "PATCH_SAFE_DAMP", "get_down": "action.get_down"}
+  },
+  "telemetry": [
+    {"id": "fsm_state"},
+    {"id": "battery"},
+    {"id": "joint_q"},
+    {"id": "joint_dq"},
+    {"id": "joint_tau"},
+    {"id": "imu"},
+    {"id": "policy_name"},
+    {"id": "inference_ms"},
+    {"id": "queue_depth"},
+    {"id": "faults"}
+  ],
+  "streams": [
+    {"id": 0, "kind": "rgb", "codecs": ["h264"], "res": [1280, 720], "fps": [30, 60]},
+    {"id": 1, "kind": "depth", "format": "z16", "res": [320, 240], "fps": [10, 15]}
+  ],
+  "map": {"capable": true, "voxel": 0.05, "tile": 4.0, "occupancy": true},
+  "model": {
+    "present": true,
+    "bundle_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "format": "glb+json/v1",
+    "url": "/api/v1/model/l4w4.zip",
+    "joint_order": [
+      "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint", "FL_foot_joint",
+      "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint", "FR_foot_joint",
+      "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint", "RL_foot_joint",
+      "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint", "RR_foot_joint"
+    ],
+    "joint_order_hash": 0,
+    "base_link": "base_link",
+    "root_frame": "odom",
+    "dof": 16
+  },
+  "policies": [
+    {"id": 0, "name": "default"},
+    {"id": 1, "name": "FS"},
+    {"id": 2, "name": "RS"},
+    {"id": 3, "name": "FAST"},
+    {"id": 4, "name": "Tomas"}
+  ],
+  "plugins": {"adapter": "rl_sar", "version": "0.1", "patch": "urc-rl-sar-patch"}
+}
