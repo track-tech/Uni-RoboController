@@ -1,0 +1,12 @@
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.glb binary
+*.gltf binary
+*.stl binary
+*.dae binary
+*.zip binary
+*.mcap binary
+*.apk binary
