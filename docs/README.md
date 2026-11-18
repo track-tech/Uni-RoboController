@@ -21,7 +21,8 @@
 14. [13-rl-sar-bridge.md](13-rl-sar-bridge.md) —— rl_sar 兼容与桥接（首要集成目标）。
 15. [14-adversarial-verification.md](14-adversarial-verification.md) —— 对抗验证方案（发布门禁）。
 16. [15-urdf-model.md](15-urdf-model.md) —— URDF 模型加载、状态同步与 3D 渲染。
-17. [adr/](adr/) —— 架构决策记录。
+17. [16-m0-plan.md](16-m0-plan.md) —— **M0 实施计划**（交付物/WBS/排期/验收 Runbook，当前执行入口）。
+18. [adr/](adr/) —— 架构决策记录。
 
 ## 补充文档
 

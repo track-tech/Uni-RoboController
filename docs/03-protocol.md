@@ -34,6 +34,10 @@
 
 - 加密时 `payload_len` 指明文长度；密文 = 明文 + 16 B GCM tag。
 - 未知 `type` 丢弃并计数（不崩溃）；未知 `flags` 位忽略。
+- `crc32c` 采用 **CRC-32/ISCSI（Castagnoli）**：poly 正常值 `0x11EDC6F41`（反射实现用 `0x82F63B78`）、
+  init=`0xFFFFFFFF`、refin/refout=true、xorout=`0xFFFFFFFF`；校验串 `"123456789"` 结果 `0xE3069283`。
+  双端与 Python 参考实现必须用同一组测试向量对齐。
+- 加密帧的 AAD 为线上 32 B 帧头**原样**（crc 字段取实际传输值）；crc 计算时仍按本表把 crc 字段置 0。
 - 所有多字节整数小端；浮点 IEEE-754 小端；字符串 UTF-8（长度前缀 u8/u16）。
 - 单包明文载荷 ≤ 1200 B；超长消息必须分片（见 §6）。
 
@@ -104,7 +108,10 @@ App                                   Agent
 - `proof = HMAC-SHA256(secret, "urc/auth/v1" || app_nonce || robot_nonce || session_id)`
 - AUTH 载荷：`proof[32], client_id[16], client_name_len u8 + utf8`
 - AUTH_OK 载荷：`role u8, key_confirm[8] = HKDF(session_key, "confirm")[0:8], server_ts_us u64`
-- 会话密钥：`HKDF-SHA256(secret, salt=app_nonce||robot_nonce, info="urc/session/v1")`。
+- 会话密钥：先 `HKDF-Extract(SHA-256, salt=app_nonce||robot_nonce, ikm=secret)` 得 PRK，
+  再派生两把方向子密钥：`HKDF-Expand(PRK, "urc/session/v1/app2robot", 32)` 与
+  `HKDF-Expand(PRK, "urc/session/v1/robot2app", 32)`；AES-GCM nonce 为 12 B：
+  `dir(1B) || 0x00×3 || seq(u64 小端)`，AAD 为线上 32 B 帧头原样（详见 02-transport §5）。
 
 ### 4.4 CAPS 载荷
 

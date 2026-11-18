@@ -84,8 +84,11 @@ Uni-RoboController/
 
 M0 文档与协议定稿 → M1 会话/控制/手柄 → M2 视频链路 → M3 深度/点云/URDF 模型 →
 M4 地图/多形态 → M5 rl_sar 036 真机兼容 → M6 安全硬化与首个开源版本。
-对抗验证贯穿 M1–M6，P0 安全用例未通过不发布。详见 [docs/10-roadmap.md](docs/10-roadmap.md)
-与 [docs/14-adversarial-verification.md](docs/14-adversarial-verification.md)。
+
+> **当前执行入口**：M0 实施计划（仓库骨架 · 协议内核 · Mock 机器人 · 调试骨架）见
+> [docs/16-m0-plan.md](docs/16-m0-plan.md)。
+> 对抗验证贯穿 M1–M6，P0 安全用例未通过不发布。详见 [docs/10-roadmap.md](docs/10-roadmap.md)
+> 与 [docs/14-adversarial-verification.md](docs/14-adversarial-verification.md)。
 
 ## 许可证
 

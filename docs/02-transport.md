@@ -77,10 +77,11 @@ interface ITransport {
 
 | 项 | 设计 |
 |---|---|
-| 算法 | AES-256-GCM（AEAD） |
-| 密钥 | `HKDF-SHA256(secret, salt=app_nonce||robot_nonce, info="urc/session/v1")` |
-| Nonce | 4 B 会话/方向前缀 + 8 B 包序号（LE），不重复使用 |
-| AAD | 帧头（magic/ver/type/flags/stream/seq/ts/len） |
+| 算法 | AES-256-GCM（AEAD，12 B nonce + 16 B tag） |
+| 主密钥 PRK | `HKDF-Extract(SHA-256, salt=app_nonce(16B)\|\|robot_nonce(16B), ikm=secret(32B))` |
+| 方向子密钥 | `HKDF-Expand(PRK, info="urc/session/v1/app2robot", L=32)` 与 `HKDF-Expand(PRK, info="urc/session/v1/robot2app", L=32)`；双方各持两把，方向不同即密钥不同，天然规避 nonce 冲突 |
+| Nonce（12 B） | `dir(1B：0x01=App→Agent，0x02=Agent→App) \|\| 保留(3B=0) \|\| seq(u64 小端)`；同一方向内 seq 单调不重复即 nonce 不重复 |
+| AAD | 线上 32 B 帧头**原样**（crc 字段取实际传输值）；任何头部比特被改都会导致 GCM 认证失败 |
 | 重放 | 每流滑动窗口 2048，旧包丢弃；窗口外触发计数告警 |
 | 密钥轮换 | 长会话（>4 h）或显式请求时重协商 |
 | 媒体加密 | 默认开启；弱 CPU 可配置关闭（仅局域网、明确提示风险） |
