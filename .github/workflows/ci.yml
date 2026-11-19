@@ -39,7 +39,16 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install pytest jsonschema zstandard cryptography
-      - run: python -m pytest conformance -m dynamic -q
+      - name: CTS dynamic
+        id: cts
+        continue-on-error: true
+        run: |
+          python -m pytest conformance -m dynamic -q --tb=short 2>&1 | tee cts.log
+      - name: Report CTS failures
+        if: steps.cts.outcome == 'failure'
+        run: |
+          tail -n 12 cts.log | while IFS= read -r line; do echo "::error title=cts::$line"; done
+          exit 1
 
   agent-x86_64:
     runs-on: ubuntu-latest
