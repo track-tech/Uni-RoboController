@@ -12,7 +12,7 @@
 ## 决定
 
 1. **项目定位**：标准协议 + Android 操作端 + 一致性测试（CTS）+ mock/最小参考 Agent。
-2. **机器人端**：生产 Agent 由厂商/社区按 [18-protocol-implementation-guide.md](18-protocol-implementation-guide.md)
+2. **机器人端**：生产 Agent 由厂商/社区按 [18 实现指南](../18-protocol-implementation-guide.md)
    实现；项目只提供“最小参考 Agent”（单形态、单相机、基础档）作为活文档，不承诺多形态/RL 集成。
 3. **v1 仅 Android**，只交付“基础档”：发现/配对/会话/控制/遥测/视频/URDF 模型状态/安全语义；
    深度、点云/地图、关节/笛卡尔命令等作为 v1.1 增强档，按能力协商启用。
