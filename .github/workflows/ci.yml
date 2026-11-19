@@ -1,0 +1,65 @@
+# Copyright (c) 2026-2027 zbc
+# CI：静态检查、协议向量、CTS、双架构 C++ 协议库测试；Android 工程出现后启用 android job。
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install jsonschema zstandard
+      - run: python tools/check_links.py
+      - run: python tools/check_kmp_ready.py
+      - run: python tools/codec_ref/check_caps.py
+      - run: python tools/codec_ref/gen_vectors.py --check
+
+  vectors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest jsonschema zstandard
+      - run: python -m pytest conformance -m static -q
+
+  cts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest jsonschema zstandard
+      - run: python -m pytest conformance -m dynamic -q
+
+  agent-build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y cmake g++ libssl-dev
+      - run: cmake -S agent -B agent/build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build agent/build -j
+      - run: ctest --test-dir agent/build --output-on-failure
+
+  android-build:
+    if: ${{ hashFiles('android/settings.gradle.kts') != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: cd android && ./gradlew :core:protocol:test :app:assembleDebug

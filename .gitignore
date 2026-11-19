@@ -15,6 +15,9 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+.pytest_cache/
+*.egg-info/
+tmp-*
 
 # 工具/缓存
 .cache/

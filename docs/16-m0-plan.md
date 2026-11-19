@@ -7,6 +7,7 @@
 > M0 完成判据：**CI 全绿 + C++/Kotlin/Python 三端同一套向量 + CTS 静态组/基础动态组跑通 +
 > App 真机与 mock 全链路（发现→配对→控制→遥测→看门狗→急停）+ 最小参考 Agent 可构建（x86_64/aarch64）**。
 > 日期：2026-11-19。2 人（Android 1、协议/工具/C++ 1），周期 3 周。
+> **当前进度**：[reports/m0-progress.md](reports/m0-progress.md)（协议层、向量、C++ 库、CTS 已可运行）。
 
 ## 1. 目标与范围
 

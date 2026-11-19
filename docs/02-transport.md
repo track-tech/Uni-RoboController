@@ -57,6 +57,15 @@ interface ITransport {
 
 发现响应**不含密钥**；未配对设备连接后在 AUTH 阶段被拒绝。
 
+UDP 发现报文（独立格式，无 32 B 帧头；均为小端）：
+
+| 报文 | 字段 |
+|---|---|
+| DISCOVER | `magic u32=URC1, version u8=1, type u8=0x20, flags u8, reserved u8, app_nonce[16], app_id[16], crc32c u32` |
+| ANNOUNCE | `magic u32=URC1, version u8=1, type u8=0x21, flags u8, reserved[2], robot_id_len u8+str, robot_name_len u8+str, form_len u8+str, ctrl_port u16, video_port u16, depth_port u16, map_port u16, web_port u16, caps_hash u32, pair_state u8, proto_major u16, proto_minor u16, crc32c u32` |
+
+ANNOUNCE 的 `caps_hash` 用于快速判断能力是否变化；完整 capability 在认证后由 CAPS 下发。
+
 ### 4.2 配对
 
 - **QR 一次性/可见秘密**：机器人生成 32 B 随机秘密，二维码展示；App 扫码后保存为客户端凭据。
@@ -81,7 +90,7 @@ interface ITransport {
 | 主密钥 PRK | `HKDF-Extract(SHA-256, salt=app_nonce(16B)\|\|robot_nonce(16B), ikm=secret(32B))` |
 | 方向子密钥 | `HKDF-Expand(PRK, info="urc/session/v1/app2robot", L=32)` 与 `HKDF-Expand(PRK, info="urc/session/v1/robot2app", L=32)`；双方各持两把，方向不同即密钥不同，天然规避 nonce 冲突 |
 | Nonce（12 B） | `dir(1B：0x01=App→Agent，0x02=Agent→App) \|\| 保留(3B=0) \|\| seq(u64 小端)`；同一方向内 seq 单调不重复即 nonce 不重复 |
-| AAD | 线上 32 B 帧头**原样**（crc 字段取实际传输值）；任何头部比特被改都会导致 GCM 认证失败 |
+| AAD | 帧头 32 B，但 **crc 字段置 0**（避免 crc 依赖密文、AAD 又依赖 crc 的循环定义）；crc 不参与 GCM 认证，但被 CRC 校验保护；任何头部比特被改都会导致 GCM 认证失败 |
 | 重放 | 每流滑动窗口 2048，旧包丢弃；窗口外触发计数告警 |
 | 密钥轮换 | 长会话（>4 h）或显式请求时重协商 |
 | 媒体加密 | 默认开启；弱 CPU 可配置关闭（仅局域网、明确提示风险） |
@@ -106,7 +115,7 @@ interface ITransport {
 
 ## 7. 分片与重组
 
-- 每个大消息切成 ≤ 1200 B 的片；片头携带 `msg_type, msg_id, pkt_idx, pkt_cnt, flags(last)`。
+- 每个大消息切成 ≤ 1200 B 的片；片头 8 B：`msg_id u32, pkt_idx u16, pkt_cnt u16`，末片由帧 flags bit3 标记。
 - 重组缓冲以 `msg_id` 为键，容量与超时受控（如 64 个未完成消息、200 ms 超时），防内存放大。
 - 视频帧：一个帧的所有片共享 `frame_id`；帧超时（>150 ms 或已渲染更新帧）立即丢弃，不等待补齐。
 - 深度帧同理；地图块允许更长时间（秒级）与重传。

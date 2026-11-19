@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+testpaths = ["."]
+markers = [
+    "static: 静态校验，不启动服务端",
+    "dynamic: 需要运行参考服务端的动态 CTS",
+]
+addopts = "-q"

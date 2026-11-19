@@ -397,6 +397,18 @@ def pack_discover(app_nonce: bytes, app_id: bytes, flags: int = 0) -> bytes:
     return body + struct.pack("<I", crc32c_final(body))
 
 
+def unpack_discover(data: bytes) -> dict:
+    if len(data) < 4 + 1 + 1 + 1 + 1 + 16 + 16 + 4:
+        raise ValueError("short discover")
+    magic, ver, mtype, flags, _r, app_nonce, app_id, crc = struct.unpack_from(
+        "<IBBBB16s16sI", data, 0)
+    if magic != DISCOVERY_MAGIC or ver != 1 or mtype != T_DISCOVER:
+        raise ValueError("bad discover")
+    if crc32c_final(data[:-4]) != crc:
+        raise ValueError("bad discover crc")
+    return {"app_nonce": app_nonce, "app_id": app_id, "flags": flags}
+
+
 @dataclass
 class Announce:
     robot_id: str
@@ -430,7 +442,7 @@ def unpack_announce(data: bytes) -> Announce:
         raise ValueError("bad announce")
     if crc32c_final(data[:-4]) != struct.unpack_from("<I", data, len(data) - 4)[0]:
         raise ValueError("bad announce crc")
-    off = 10
+    off = 9
     strings = []
     for _ in range(3):
         n = data[off]

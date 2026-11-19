@@ -108,15 +108,17 @@ App                                   Agent
 
 - `proof = HMAC-SHA256(secret, "urc/auth/v1" || app_nonce || robot_nonce || session_id)`
 - AUTH 载荷：`proof[32], client_id[16], client_name_len u8 + utf8`
-- AUTH_OK 载荷：`role u8, key_confirm[8] = HKDF(session_key, "confirm")[0:8], server_ts_us u64`
+- AUTH_OK 载荷：`role u8, key_confirm[8] = HKDF-Expand(PRK, "urc/session/v1/confirm", 8), server_ts_us u64`
 - 会话密钥：先 `HKDF-Extract(SHA-256, salt=app_nonce||robot_nonce, ikm=secret)` 得 PRK，
   再派生两把方向子密钥：`HKDF-Expand(PRK, "urc/session/v1/app2robot", 32)` 与
   `HKDF-Expand(PRK, "urc/session/v1/robot2app", 32)`；AES-GCM nonce 为 12 B：
-  `dir(1B) || 0x00×3 || seq(u64 小端)`，AAD 为线上 32 B 帧头原样（详见 02-transport §5）。
+  `dir(1B) || 0x00×3 || seq(u64 小端)`，AAD 为帧头且 **crc 字段置 0**（详见 02-transport §5）。
 
 ### 4.4 CAPS 载荷
 
-- `caps_len u32, caps_crc32c u32, zstd(capability_json)`，分片传输（flags bit3 标记末片）。
+- `caps_len u32, caps_crc32c u32, encoding u8, data`，分片传输（flags bit3 标记末片）；
+  `encoding`：0=raw JSON，1=zstd；`caps_crc32c` 覆盖未压缩的 capability JSON。
+- `caps_hash = SHA-256(canonical_json)[0:4]`（小端 u32）；canonical JSON 为键排序、紧凑分隔符、UTF-8。
 - capability JSON schema 见 [08-robot-abstraction.md](08-robot-abstraction.md) 与 §5 节示例。
 - capability 中 `model` 字段声明 URDF 模型包：`bundle_hash`、下载 `url`、`joint_order`、
   `joint_order_hash`、`base_link`、`root_frame`、`dof`（详见 [15-urdf-model.md](15-urdf-model.md)）。
@@ -158,7 +160,7 @@ App                                   Agent
 ## 6. 分片与重组
 
 - 需要分片的消息（CAPS/VIDEO/DEPTH/MAP_TILE/CONFIG）：分片头在载荷前附加
-  `msg_id u32, pkt_idx u16, pkt_cnt u16, payload_bytes u16`（8 B），余下为有效负载。
+  `msg_id u32, pkt_idx u16, pkt_cnt u16`（8 B），余下为有效负载；末片由帧 flags bit3 标记。
 - 视频/深度使用专用帧头（见 §7.2/§7.3），不复用通用分片头。
 - 重组器上限：64 个并发消息、单消息 ≤ 8 MB（CAPS/CONFIG ≤ 256 KB）、超时 200 ms（视频/深度）
   或 5 s（地图块/CAPS）。
@@ -304,7 +306,8 @@ message Telemetry {
 | 48+4N | 4×N | `joint_vel` f32[N] | 可选（flags.bit0） |
 | 48+8N | 4×N | `joint_eff` f32[N] | 可选（flags.bit1） |
 
-- `joint_order` 必须与 capability 一致；不匹配时 App 不渲染运动并提示（安全相关）。
+- `joint_order` 必须与 capability 一致；`joint_order_hash = CRC32C(UTF-8(joint_order 以 "\n" 连接))`；
+  不匹配时 App 不渲染运动并提示（安全相关）。
 - 50 关节时约 670 B（含位置/速度），人形 50+ 关节需分片；带宽 10 KB/s 级。
 - 状态过期（>500 ms）→ App 置灰模型；Agent 侧状态新鲜度看门狗另见 09 文档。
 

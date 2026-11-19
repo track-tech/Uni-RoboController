@@ -73,6 +73,37 @@ class CryptoContext:
         return AESGCM(key).decrypt(nonce, ciphertext, aad)
 
 
+class ReplayWindow:
+    """u32 序号滑动窗口（默认 2048）；按 RFC 1982 处理回绕。"""
+
+    def __init__(self, window: int = 2048):
+        self.window = window
+        self.initialized = False
+        self.last = 0
+        self.bits: set[int] = set()
+
+    def accept(self, seq: int) -> bool:
+        if not self.initialized:
+            self.initialized = True
+            self.last = seq
+            self.bits = {0}
+            return True
+        diff = ((seq - self.last + 0x80000000) & 0xFFFFFFFF) - 0x80000000
+        if diff > 0:
+            if diff >= self.window:
+                self.bits.clear()
+            else:
+                self.bits = {b + diff for b in self.bits}
+            self.last = seq
+            self.bits.add(0)
+            return True
+        back = -diff
+        if back >= self.window or back in self.bits:
+            return False
+        self.bits.add(back)
+        return True
+
+
 if __name__ == "__main__":
     secret = bytes(range(32))
     an = bytes(range(16))
