@@ -23,7 +23,9 @@
 | 地图独立端口（预留） | 47803 | UDP | 同上 |
 | 管理/文件/日志 | 47880 | TCP HTTP | Token 认证，独立于实时路径 |
 
-> 端口均可配置；Agent 与 App 在握手中交换实际端口。所有 UDP 载荷 ≤ 1200 B（留出 MTU 余量）。
+> 端口均可配置；Agent 与 App 在握手中交换实际端口。**UDP 载荷上限按 IPv4/Ethernet 定为 1280 B**
+> （避免 IP 分片）；明文载荷 ≤1200 B，加密帧（32 B 头 + 明文 + 16 B tag）最大 1248 B；接收缓冲区 ≥2048 B。
+> 若部署在 IPv6 链路，必须把明文上限降到 1184 B（或链路支持 1500 MTU 并确认不分片），由配置/CTS 校验。
 > v1 单端口多流的原因：客户端无需在握手中声明自身端口，且便于加密/重放窗口统一；独立端口留待 M2 视频分层。
 
 ## 3. 传输抽象
@@ -66,6 +68,8 @@ UDP 发现报文（独立格式，无 32 B 帧头；均为小端）：
 | ANNOUNCE | `magic u32=URC1, version u8=1, type u8=0x21, flags u8, reserved[2], robot_id_len u8+str, robot_name_len u8+str, form_len u8+str, ctrl_port u16, video_port u16, depth_port u16, map_port u16, web_port u16, caps_hash u32, pair_state u8, proto_major u16, proto_minor u16, crc32c u32` |
 
 ANNOUNCE 的 `caps_hash` 用于快速判断能力是否变化；完整 capability 在认证后由 CAPS 下发。
+v1 单端口模式下 ANNOUNCE 的 `video_port/depth_port/map_port` 必须置 0（复用 `ctrl_port`）；
+只有 M2 真正拆独立端口时才填非 0，App 不得按非 0 端口自行绑定。
 
 ### 4.2 配对
 
@@ -79,9 +83,9 @@ ANNOUNCE 的 `caps_hash` 用于快速判断能力是否变化；完整 capabilit
 ### 4.3 会话
 
 - 单控制者：`CONTROL` 角色唯一；第二个控制请求被拒绝，可加入 `VIEWER`（只读）。
-- 认证门（fail-closed）：除 `HELLO`/`AUTH` 外，所有帧必须**已加密 + session_id 匹配 + 来源地址为当前会话**；
-  否则静默丢弃并计数（不执行、不回显状态）。未认证的 `claim`/`CTRL`/`ESTOP`/`release_estop` 一律无效。
-- 会话超时：控制 5 s 无有效帧 → 会话失效；重连窗口 10 s（可恢复会话，密钥不重协商）。
+- 认证门（fail-closed）：明文仅允许 `HELLO/HELLO_ACK/AUTH/AUTH_OK` 与认证前 ERROR（0x0101/0x0103/0x0602，限速）；
+  其余帧必须**已加密 + session_id 匹配 + 来源地址为当前会话**；否则静默丢弃并计数。
+- 会话超时：控制 5 s 无“成功解密+CRC 通过+session 匹配”的帧 → 会话失效；**不保留重连密钥**，必须新 HELLO+AUTH。
 - 会话失效清理：清空 claimed/armed/peer/方向密钥；**急停锁存保持**，需在新会话中显式 `release_estop` + `arm`。
 - IP 变化不自动迁移（v1）；AP 切换/重连走全新握手。
 - 会话 ID 在握手时生成（u32），后续所有包携带；防止跨会话重放。
@@ -97,7 +101,7 @@ ANNOUNCE 的 `caps_hash` 用于快速判断能力是否变化；完整 capabilit
 | AAD | 帧头 32 B，但 **crc 字段置 0**（避免 crc 依赖密文、AAD 又依赖 crc 的循环定义）；crc 不参与 GCM 认证，但被 CRC 校验保护；任何头部比特被改都会导致 GCM 认证失败 |
 | 重放 | **每方向**一个滑动窗口 2048（跨流共享）；旧包/重复包丢弃并计数 |
 | 密钥轮换 | 长会话（>4 h）或显式请求时重协商 |
-| 媒体加密 | 默认开启；弱 CPU 可配置关闭（仅局域网、明确提示风险） |
+| 媒体加密 | **必须开启**；不提供生产关闭开关；仅隔离测试构建可有调试开关，且 Release/实机禁用 |
 | 管理 HTTP | Bearer Token（配对时下发，可轮换）+ TLS 可选（自签证书指纹固定） |
 | 失败处理 | 认证/解密失败不降级、不重试明文；连续失败锁定来源 |
 

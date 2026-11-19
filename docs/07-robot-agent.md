@@ -105,9 +105,9 @@ robot:
 network:
   bind: "0.0.0.0"
   ctrl_port: 47800
-  video_port: 47801
-  depth_port: 47802
-  map_port: 47803
+  video_port: 0              # v1 单端口多流：0 表示复用 ctrl_port
+  depth_port: 0
+  map_port: 0
   http_port: 47880
   discovery: {mdns: true, broadcast: true}
   require_pairing: true
@@ -176,10 +176,14 @@ recording:
 
 ### 10.1 双架构构建与验证
 
+> **M0 范围**：C++ mock/参考 Agent 仅做 POSIX（Linux）原生构建；aarch64 由 CI QEMU 容器验证；
+> Windows 开发用 WSL/容器或 Python 参考服务端。完整交叉编译/发布物在 M2 引入；本节的交叉工具链
+> 与双架构发布是 M2+ 目标，不是 M0 验收项。
+
 - **工具链**：x86_64 用宿主原生构建；aarch64 用交叉工具链或 `--platform linux/arm64` 容器构建；
   CMake `CMAKE_TOOLCHAIN_FILE` + 依赖（OpenSSL/protobuf/GStreamer/zstd）交叉编译或使用目标板 sysroot。
-- **CI**：`agent-build` 矩阵 `[x86_64 原生, aarch64 交叉]`；aarch64 产物在 QEMU 下跑
-  `liburc_protocol` 单测与协议向量；媒体/GStreamer 相关用例在目标板（M2 起）跑。
+- **CI**：`agent-x86_64` 原生构建 + ctest；`agent-aarch64` 在 QEMU arm64 容器构建并跑协议向量；
+  媒体/GStreamer 相关用例在目标板（M2 起）跑。
 - **运行时差异**：ARM 板卡注意页大小（4K/16K）、DMA-BUF 零拷贝、RGA 色彩转换、
   USB3 相机带宽与供电；x86 注意核显/独显驱动与 VAAPI 权限。
 - **性能基线**：x86 与 ARM64 分别记录 720p30/1080p30 编码 CPU、延迟与内存；
@@ -216,6 +220,8 @@ WantedBy=multi-user.target
 
 - 虚拟手柄模式需要 `/dev/uinput` 权限（`input` 组/udev 规则）；仅 L1 兼容模式需要。
 - 网络端口绑定、防火墙规则；禁止暴露公网。
+- Windows 开发：C++ mock/参考 Agent 仅 POSIX；推荐 WSL2 或容器构建运行；不使用 MSYS2 原生编译；
+  仅做协议/CTS 联调时可直接用 `tools/codec_ref/ref_server.py`。
 - 无头模式：Xorg dummy/Xvfb 或 KMS；仅媒体/地图不需要显示时可纯 headless（KMS 采集除外）。
 
 ## 12. 健康检查与故障恢复

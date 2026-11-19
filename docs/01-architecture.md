@@ -119,7 +119,7 @@ RobotControlService（前台服务，持有 Session）
 
 ```
 相机 → GStreamer 采集/转换 NV12 → 硬件编码 H.264（CBR/无 B 帧/低延迟）
-  → 分片（MTU 1200）→ XOR FEC → UDP 47801
+  → 分片（明文 ≤1200 B，UDP datagram ≤1280）→ XOR FEC → UDP 47800（stream=video）
   → App 抖动缓冲 → MediaCodec 硬解 → SurfaceView
 App 每 50 ms 回传 Feedback（丢包/码率建议/关键帧请求）→ Agent 自适应码率
 ```
@@ -127,7 +127,7 @@ App 每 50 ms 回传 Feedback（丢包/码率建议/关键帧请求）→ Agent 
 ### 4.3 深度（Robot → App）
 
 ```
-深度相机/ROS 2 深度话题 → 降采样/量化 → Zstd 压缩 → UDP 47802
+深度相机/ROS 2 深度话题 → 降采样/量化 → Zstd 压缩 → UDP 47800（stream=depth）
   → App 深度伪彩显示；同时用内参在 GPU 反投影生成实时点云
 ```
 
@@ -136,7 +136,7 @@ App 每 50 ms 回传 Feedback（丢包/码率建议/关键帧请求）→ Agent 
 ```
 深度 + 位姿（里程计/SLAM）→ 体素哈希（默认 5 cm）→ 脏块 → 4 m 瓦片
   → 量化 + 排序 + Zstd → 瓦片缓冲（Agent）
-App 按视锥/区域请求瓦片 → UDP 47803 → 缓存/渲染；2D 占据栅格同步下发
+App 按视锥/区域请求瓦片 → UDP 47800（stream=map）→ 缓存/渲染；2D 占据栅格同步下发
 ```
 
 ### 4.5 管理（App ↔ Agent，HTTP 47880）

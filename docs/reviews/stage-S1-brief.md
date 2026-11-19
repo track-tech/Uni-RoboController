@@ -1,13 +1,15 @@
-# Stage S1 Brief — C++ `mock_robot`（Rev.2，待第二轮对抗评审）
+# Stage S1 Brief — C++ `mock_robot`（Rev.3，待窄范围复审 Round 2b）
 
 | 项 | 值 |
 |---|---|
 | 阶段 | S1 |
-| 状态 | **Draft Rev.2（回应 Round 1 的 6 个 P0 / 24 个 P1）** |
+| 状态 | **Draft Rev.3（回应 Round 2 的 5 个 P0 / 27 个 P1）** |
 | 作者 | root/lead |
 | 日期 | 2026-11-20 |
-| 变更 | 冻结 AAD/seq/认证门/claim-arm/急停两步复位；POSIX-only；P0 CTS 矩阵；stats/ASAN/soak；ref_server 同步；消息向量补全 |
+| 变更 | 补消息线上格式/明文例外/会话超时统一/CTS 报告 schema/P0 ID；补状态机边界、重放顺序、锁定 per-源；补 ASAN-CTS/SIGTERM/WERROR/CI 规格；交付 soak.py/client/proto |
 | 依赖 | S0 评审流程、`liburc_protocol`、`protocol/vectors`、`conformance` |
+
+> **优先级**：Rev.3 的 §12 覆盖并优先于前文冲突段落；前文保留作为上下文。
 
 ## 0. Rev.2 变更摘要（相对 Rev.1）
 
@@ -182,9 +184,9 @@ ESTOP_LATCHED --release_estop--> AUTHENTICATED/CLAIMED（仍 disarmed）
 |---|---|
 | CTS-D-01 | ANNOUNCE 含 caps_hash、无秘密；与 CAPS canonical 一致 |
 | CTS-P-01 | 错秘密 ×5 → 锁定；锁定期正确 AUTH 仍 0x0602 |
-| CTS-P-02 | 未认证 claim/CTRL/ESTOP 全部无效果、无 armed/estop 事件、计数增加 |
+| CTS-P-02 | 未认证 claim/CTRL/ESTOP/release_estop/arm 全部无效果、无 armed/estop 事件、`gate_drop` 增加 |
 | CTS-S-01 | 第二控制者 0x0103；原会话不受影响 |
-| CTS-S-02 | 超时后停发 TELEM；新会话需 HELLO；急停锁存保留 |
+| CTS-S-02 | 超时后：停发 TELEM/MODEL/VIDEO；旧 session 帧丢弃并 `sessions_expired++`；新 HELLO+AUTH；急停锁存保留 |
 | CTS-C-01 | 控制回显正确；claim 后未 arm 时 CTRL 不生效 |
 | CTS-C-02 | `--hold-next-ms 250` + TTL 200：`ttl_dropped=1`、无动作、watchdog 未触发 |
 | CTS-C-03 | 越界/未知 mode 拒绝、限速；不 clamp、不运动 |
@@ -197,9 +199,10 @@ P1：遥测、视频（CAPS 一致性 + 重组）、模型状态、注入冒烟�
 
 ### 5.3 参考实现同步
 
-`ref_server.py` 同步：认证门、claim/arm、两步复位、ESTOP(0) 无效果、会话超时、TTL（hold 注入）、
-stats 文件、capability rgb888。默认 `cts` job 对 ref 跑；`mock-integration` 对 C++ mock 跑；
-两者必须使用同一套测试且都绿。
+`ref_server.py` 同步：认证门、claim/arm、两步复位、ESTOP(0) 无效果、会话超时（清密钥）、TTL（hold 注入）、
+stats 文件、capability rgb888；**CLI 参数与 mock 同名同义**：`--watchdog-ms/--ctrl-ttl-ms/--hold-next-ms/
+--drop/--corrupt-aead/--seed/--stale-state/--stats-file/--no-camera`。默认 `cts` job 对 ref 跑；
+`mock-integration` 对 C++ mock 跑；两者使用同一套测试与同一报告检查。
 
 ## 6. CI / 验收
 
@@ -254,7 +257,7 @@ python tools/soak.py --bin agent/build/mock_robot --duration 1800 --drop 5 --rat
 ## 7. 可观测性
 
 - `--stats-file` JSON（每 500 ms + 退出）：
-  `rx_frames, tx_frames, rx_drop, auth_fail, lockout, replay_drop, aead_fail, ttl_dropped, invalid_ctrl, watchdog, estop, sessions_expired, dropped_tx, corrupt_tx`。
+  `rx_frames, tx_frames, rx_drop, gate_drop, auth_fail, lockout, replay_drop, aead_fail, ttl_dropped, invalid_ctrl, watchdog, estop, sessions_expired, dropped_tx, corrupt_tx`。
 - 退出打印单行 `URC_STATS {...}`；不记录秘密/密钥/明文载荷。
 - `--verbose` 打印状态转换与原因；日志英文。
 
@@ -290,3 +293,121 @@ python tools/soak.py --bin agent/build/mock_robot --duration 1800 --drop 5 --rat
 - `stage-S1-gate.md` PASS；
 - `task-5` 依赖全部 review 任务；
 - 预登记 mutant 列表 + 审计任务说明。
+
+---
+
+# 12. Rev.3 冻结补充（优先于前文；回应 Round 2）
+
+## 12.1 消息契约补全（关闭 R2-P0-1）
+
+- `docs/03-protocol.md` 已新增 §3.1 枚举/流 ID 与 §3.2 逐消息载荷（SESSION_CTRL/EVENT/ERROR/PING/PONG/FEEDBACK）；
+- 新增 `protocol/proto/telemetry.proto`（TELEM 字段号/类型冻结）；
+- C++ `messages.h/.cpp` 补齐：SESSION_CTRL、ESTOP、EVENT、ERROR、VIDEO、PONG、FEEDBACK 的 pack/unpack；
+- `protocol/vectors/session.json` 增加上述消息的固定字节样例（5 个 SESSION_CTRL 动作、3 个 EVENT、ERROR、PING/PONG、FEEDBACK）；
+- CTS 增加**独立硬编码期望字节**的契约测试（不通过 urc_ref 解码生成期望），防止“同库假绿”；
+- capability `streams[].id` 是逻辑编号，帧头 `stream` 固定 VIDEO=2/DEPTH=3/MAP=4（03 §3.1）。
+
+## 12.2 明文例外与 AUTH（关闭 R2-P0-2）
+
+明文仅允许：`HELLO`、`HELLO_ACK`、`AUTH`、`AUTH_OK`、认证前 `ERROR`（0x0101/0x0103/0x0602，≤2/s/来源）。
+其余帧必须加密 + session 匹配 + 来源匹配，否则丢弃计数。
+
+AUTH 规则：
+- 只接受本来源的 pending 会话；`AUTH.session_id` 必须等于该 pending ID；
+- 每个 pending 会话只接受一次 AUTH；AUTH_OK 后重复/重放 AUTH 丢弃并计数；
+- 失败 per-来源计数，5 次锁 30 s；仅影响该来源；成功清零；
+- HELLO 时旧会话立即失效（claimed=false、armed=false、轴清零、旧密钥作废），**急停锁存保留**；
+  已存在其他来源控制者时 HELLO → 明文 ERROR 0x0103（限速），不覆盖现有会话。
+
+## 12.3 状态机边界（关闭 safety P1-1/2）
+
+| 当前状态 | 事件 | 结果 |
+|---|---|---|
+| ESTOP_LATCHED | `arm` | ERROR 0x0302；状态不变 |
+| ESTOP_LATCHED | `release_estop` | 清锁存；claimed 保持；armed=false；轴清零 |
+| AUTHENTICATED | `release_estop` | no-op（未锁存） |
+| CLAIMED | `arm` 且当前控制者 | ARMED |
+| AUTHENTICATED（未 claim） | `arm` | ERROR 0x0103（先 claim）；状态不变 |
+| ARMED | watchdog 超时 | armed=false、零速、EVENT 0x0002；需 action3 |
+| ARMED/CLAIMED | ESTOP(≠0) | 锁存、armed=false、零速、EVENT 0x0001 |
+| 任意 | HELLO（同来源） | 新 pending；清 claimed/armed/轴；旧密钥作废；锁存保留 |
+| 任意 | 会话超时 | 清 claimed/armed/peer/密钥；锁存保留 |
+| 未 claim / 未 arm | CTRL | 丢弃计数；输出保持零（不回显旧命令） |
+
+## 12.4 会话/重放/锁定（关闭 safety P1-3..6、T2-P0-1）
+
+- 会话存活只由“CRC 通过 + 解密成功 + session 匹配”的帧延长；重放帧、坏 AEAD 帧不延长；
+- 5 s 超时 → 会话失效；**清方向密钥**，必须新 HELLO+AUTH；急停锁存保留；
+- 帧处理顺序固定：CRC → 解密 → session/来源校验 → 重放窗口；只有全部通过才更新窗口；
+- 坏 AEAD 的高 seq 不得推进窗口；重放/坏 AEAD 分项计数；
+- 锁定 per-来源（IP:port），AUTH 失败才计数；AUTH 错误不受 ERROR 限速影响；
+- HELLO_ACK ≤10/s/来源；ANNOUNCE ≤20/s；发现非法包静默丢弃。
+
+## 12.5 TTL/看门狗可证伪（关闭 safety P1-1、tests-b）
+
+- TTL 测试配置：`--ctrl-ttl-ms 200 --watchdog-ms 600 --hold-next-ms 250`；
+- 持续 100 Hz CTRL，一次 hold 命中下一 CTRL；断言：`ttl_dropped=1`、`watchdog=0`、无轴跳变、后续控制恢复；
+- `--hold-next-ms` 只作用于下一入站 CTRL；单线程阻塞上限 500 ms；定时器用绝对时间追赶；
+- stats 计数变更立即原子写入（临时文件 + rename），另每 500 ms 与退出时 flush；CTS 读文件断言。
+
+## 12.6 CTS 报告与 P0 矩阵（关闭 T2-P0-2、tests-a/e）
+
+- 18 §6.1 已冻结 `urc-cts-report/v1` schema；12 个 P0 ID 固定（18 §6.2）；
+- pytest `@pytest.mark.cts_id("CTS-...")`；conftest hook 生成报告；
+- CI 用 `tools/check_cts_report.py` 断言：P0 ID 集合完全相等、全部 passed、skipped=0、xfail=0；
+- 默认 `cts`（Python ref）与 `mock-integration`（C++ mock）都必须通过该检查；
+- S-04 增加断言：ESTOP(0) 后 `fault_flags.bit1` 仍置位、x/y/yaw=0、CTRL 不回显；
+- S-05 分项断言 replay_drop/aead_fail，且“篡改帧不得被回显”；增加 **CRC 错但 AEAD 合法** 的负例；
+- S-02 增加断言：超时后旧 session 帧被丢弃并 `sessions_expired++`、EVENT 0x0004、锁存保留；
+- S-03 增加断言：watchdog 后未 arm 的 CTRL 不回显、无运动；action3 后才恢复；
+- 客户端 `conformance/cts/client.py`：connect 走 claim→arm；暴露 `aead_fail/replay_drop`；不吞解密异常；
+- 旧用例改为新语义（claim≠arm、两步复位）。
+
+## 12.7 跨流 seq/重放（关闭 R2-P0-3）
+
+- `crypto.json` 增加：同 seq 不同 stream 的 nonce 相同（证明必须全局 seq）、u32 回绕窗口、重复/旧包；
+- `session.json` 增加跨流重复 seq 的负例；
+- CTS 增加（可证伪）：
+  - App→Agent 方向：CTRL(stream=0) 用 seq=X 后，FEEDBACK(stream=6) 复用 seq=X → 必须 `replay_drop++` 且 FEEDBACK 不处理；
+  - Agent→App 方向：连接后收集 TELEM(stream=1) 与 VIDEO(stream=2) ≥20 帧，断言 seq 严格递增且 `replay_drop=0`；
+  - 新增 `protocol/vectors/replay.json` 承载帧级负例（同 seq 跨流、回绕、重复、旧包），不再塞进 `session.json`；
+  - C++/Python 测试都用一个“每方向全局窗口”，跨流重复必须拒绝。
+- capability `streams[].id` 到帧 `stream` 的映射在 03 §3.1 冻结（VIDEO=2/DEPTH=3/MAP=4），App 不按逻辑 id 误判。
+- C++/Python 参考实现都用“每方向全局 seq”，测试断言跨流重复拒绝。
+
+## 12.8 构建/CI 落地（关闭 build P1-1..6）
+
+- CI job 规格：
+  - `mock-integration`：安装 cmake/g++/libssl-dev；`cmake -DURC_BUILD_APPS=ON -DURC_WERROR=ON`；随机端口启动；`URC_CTS_MOCK_BIN` 跑动态组；`timeout-minutes: 15`；`if: always()` 上传日志/`cts-report.json`；
+  - `mock-asan`：`-fsanitize=address,undefined` + `-fno-omit-frame-pointer`；ctest + **CTS 用 ASAN mock 跑动态组**（`ASAN_OPTIONS=detect_leaks=1:abort_on_error=1`、`UBSAN_OPTIONS=halt_on_error=1`）；安装 cmake/g++/libssl-dev；`timeout-minutes: 25`；失败 `if: always()` 上传 build/log/cts-report；
+  - `mock-soak`：仅 `workflow_dispatch` 或 main 提交含 `[soak]`；`timeout-minutes: 45`；30 min；解析 stats/RSS/fd；失败上传；
+  - `agent-aarch64`：`-DURC_BUILD_APPS=ON`；QEMU `mock_robot --help`；
+  - `android-build` 不在 M0 gate（S4 加入）。
+- `URC_WERROR` 选项只对项目源启用；nlohmann 以 SYSTEM include；
+- CMake `if(UNIX)` 守卫 apps/net；非 UNIX 明确报错；Windows 用 Python ref（文档 07/17/16 已注明）；
+- SIGINT/SIGTERM：置停止标志、select EINTR、flush stats、关闭 socket、exit 0；CI 测试退出码；
+- `tools/soak.py` 交付；stats 原子写；日志写文件（不用 PIPE 防阻塞）；
+- `.gitignore` 增加 `build*/`、`artifacts/`。
+
+## 12.9 交付物新增（更新 §2.1）
+
+- `conformance/cts/client.py`、`conformance/test_protocol.py`、`conformance/conftest.py`；
+- `tools/soak.py`、`tools/check_cts_report.py`（校验 dynamic+arch 报告并集=12 个 P0 ID）；
+- `protocol/vectors/replay.json`；`protocol/proto/telemetry.proto`；
+- `tools/codec_ref/urc_ref/messages.py`、`gen_vectors.py`、`ref_server.py`（同参数集+stats）；
+- `agent/include/urc/messages.h`、`agent/src/messages.cpp` 补全；
+- `docs/01,02,03,04,07,09,10,15,16,17,18` 回写（含 07 的 WSL/devcontainer 指引与单端口）。
+
+## 12.10 Gate 证据（Rev.3）
+
+- Round 2b 4 份窄范围复审：P0=0；P1 关闭或用户书面接受；
+- 文档 diff 与 Brief §12 对应关系表；
+- **执行证据**（Gate 后补）：CI run URL、`cts-report.json`（dynamic+arch）、`mock-soak` stats/RSS/fd 日志；
+- Gate PASS 后才创建/领取 `task-5`；实现阶段按 §6 验收。
+
+## 12.11 仍需用户/评审确认
+
+1. POSIX-only + Python ref 作为 Windows 开发路径是否接受？
+2. 单端口多流（v1）是否接受？
+3. 30 min soak 仅在 dispatch/`[soak]` 触发，是否满足 M0 gate？（不会阻断日常 PR）
+4. Round 2b 采用 4 名原评审员窄范围确认，是否接受？

@@ -36,7 +36,7 @@
 | D2 | Python `tools/codec_ref` 为测试向量唯一真源 | C++/Kotlin 差分对齐 |
 | D3 | M0 视频走 RGB888 测试图（160×120@10，VIDEO 通道分片；capability 如实声明 rgb888） | 不引入 GStreamer/MediaCodec 依赖 |
 | D4 | TELEM 从 M0 起用 protobuf | 避免中途换格式导致向量作废 |
-| D5 | 加密第 1 天实现（OpenSSL 3 / javax.crypto），默认开启，`--no-encrypt` 仅调试 | 认证/重放是安全地基 |
+| D5 | 加密第 1 天实现（OpenSSL 3 / javax.crypto），默认开启；不提供生产关闭开关（仅隔离测试构建可调试） | 认证/重放是安全地基 |
 | D6 | 配对秘密 M0 用控制台 `URCPAIR:<base64>`，M1 加二维码 | 不背相机权限依赖 |
 | D7 | 发现 M0 实现 **UDP 广播 DISCOVER/ANNOUNCE**；App 自动列表 | 自动发现是 v1 核心体验，M0 先打通 |
 | D8 | aarch64 交叉构建 + QEMU 向量测试在 M0 进入 CI | 机器人端 x86_64/ARM64 双目标（07 文档 §10） |
@@ -125,21 +125,24 @@ urc-reference-agent --config /etc/urc/agent.yaml [--no-camera]
 - `core:protocol` JVM 单测吃 `vectors/*.json`；`check_kmp_ready` 保证无平台 API 引用。
 - 仅 JVM 单测；M0 不写 instrumentation。
 
-## 6. CI（四 job）
+## 6. CI（lint / vectors / cts / mock-integration / asan / arch；Android 在 S4 加入）
 
 | job | 内容 |
 |---|---|
 | `lint` | Markdown 链接、capability Schema、KMP-ready 检查 |
 | `vectors` | Python 参考自测 + `gen_vectors.py --check` + **CTS 静态组** |
-| `agent-build` | 矩阵 x86_64 原生 + aarch64 交叉；CTest 吃向量；aarch64 QEMU 跑向量 |
-| `android-build` | JDK 17 + Android SDK：`:core:protocol:test` + `:app:assembleDebug` |
+| `cts` | CTS 动态组（默认 Python ref）+ 报告校验 |
+| `mock-integration` | C++ mock 构建 + per-test CTS + 报告/日志 artifact |
+| `mock-asan` | ASAN/UBSAN + ctest + ASAN mock 动态 CTS |
+| `mock-soak` | 30 min 浸泡（dispatch / main `[soak]` 触发） |
+| `agent-x86_64` / `agent-aarch64` | 原生/QEMU 构建 + ctest；aarch64 `mock_robot --help` |
 
 ## 7. WBS（人日，2 人 3 周 ≈ 30 人日）
 
 | ID | 任务 | 线 | 估 | 依赖 | DoD |
 |---|---|---|---|---|---|
 | T1.1 | 仓库骨架：CMake/Gradle/目录/third_party | C | 2 | — | 空目标可构建 |
-| T1.2 | CI 四 job + Schema + KMP-ready 检查 | T | 2 | T7 并行 | 故意坏 JSON 可阻断 |
+| T1.2 | CI job + Schema + KMP-ready 检查 | T | 2 | T7 并行 | 故意坏 JSON 可阻断 |
 | T1.3 | aarch64 交叉 + QEMU 向量（agent 矩阵） | C | 1.5 | T1.1,T2.1 | 交叉产物 + QEMU 向量绿 |
 | T2.1 | `codec_ref` + `gen_vectors.py` | T | 3 | — | 4 份向量 ≥60 例 |
 | T2.2 | **CTS 静态组 + 动态框架** | T | 3 | T2.1 | `cts-report.json` 生成；对 mock 可跑 |
@@ -158,7 +161,7 @@ urc-reference-agent --config /etc/urc/agent.yaml [--no-camera]
 
 > 关键路径：T2.1 → T2.2/T3.1/4.1 → T3.2/4.2 → T5.1/6.1 → T6.2 → T9。
 > 总计约 **30 人日**（2 人 3 周；单人约 6 周）。
-> 架构：机器人端目标 x86_64/ARM64，`agent-build` 双架构。
+> 架构：机器人端目标 x86_64/ARM64；`agent-x86_64`/`agent-aarch64` CI job 分别构建。
 
 ## 8. 3 周排期（2 人）
 
@@ -221,7 +224,7 @@ URC_CTS_MOCK_BIN=agent/build/mock_robot URC_CTS_REQUIRE_EXTERNAL=1 \
 | 三端 CRC/HKDF 不一致 | 向量驱动；difftest 字节级比对 |
 | CTS 过早复杂化拖慢 M0 | M0 只做静态组 + 5–8 条 P0 动态；完整组随 M1 |
 | protobuf 版本漂移 | 锁 proto；两端 pin 大版本；向量含编码字节 |
-| Windows 开发机差异 | `.gitattributes`；agent 用 WSL/容器 |
+| Windows 开发机差异 | `.gitattributes`；C++ mock 仅 POSIX（Windows 用 Python ref server）；需要本地跑 C++ 用 WSL/容器 |
 | aarch64 工具链配置困难 | M0 只交叉协议内核（无 GStreamer）；容器预装；QEMU 跑向量 |
 | App 与 mock 时间线错位 | 协议内核先冻结；mock 优先于参考 Agent |
 | 范围回摆到“全栈” | ADR-0014 + 本文 §1.2 不做清单；评审会对照 |
@@ -236,7 +239,7 @@ URC_CTS_MOCK_BIN=agent/build/mock_robot URC_CTS_REQUIRE_EXTERNAL=1 \
 ## 12. 完成判据
 
 1. §9 Runbook 全绿，产出 `docs/reports/m0-report.md`。
-2. CI 四 job 全绿；agent 双架构产物 + QEMU 向量一致。
+2. CI job 全绿（lint/vectors/cts/mock-integration/asan/arch；Android 在 S4 后加入）。
 3. C++/Kotlin/Python 通过同一套 ≥60 例向量；CTS 静态组 + 基础动态组 P0 全绿。
 4. App 与 mock 真机 Wi-Fi 全链路（发现/配对/控制/遥测/看门狗/急停/测试图）。
 5. 最小参考 Agent 可构建、可连接、可控制（`--no-camera` 模式）。

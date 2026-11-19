@@ -20,8 +20,8 @@
 相机源（V4L2 / RealSense / ROS 2 Image）
   → 格式转换/缩放（NV12）
   → 硬件编码（H.264 默认，HEVC 可选）
-  → 分片（≤ MTU 1200）+ FEC + pacing
-  → UDP 47801 / WebRTC 视频轨
+  → 分片（明文 ≤1190 B；UDP 载荷 ≤1280（IPv4））+ FEC + pacing
+  → UDP 47800（stream=video；v1 单端口多流）/ WebRTC 视频轨
 ```
 
 ### 2.1 编码器选择（按平台）
@@ -57,11 +57,13 @@ gst-launch-1.0 -v v4l2src device=/dev/video0 io-mode=dmabuf \
   ! nvh264enc preset=low-latency-hq rc-mode=cbr bitrate=10000 gop-size=120 zerolatency=true \
   ! h264parse config-interval=-1 \
   ! video/x-h264,stream-format=byte-stream \
-  ! urcpay mtu=1200 fec=8 \
-  ! udpsink host=<app-ip> port=47801 sync=false
+  ! urcpay mtu=1190 fec=8 \
+  ! udpsink host=<app-ip> port=47800 sync=false
 ```
 
 （`urcpay` 为本项目自研 GStreamer 元素：分片 + FEC + 协议头 + pacing。）
+> M0 的 mock/参考服务端不实现 GStreamer/H.264；仅发送 RGB888 160×120@10 测试图（capability 声明 rgb888），
+> 用于验证 VIDEO 分片/重组；真实视频链路在 M2 按本文实现。
 
 ### 2.3 源与多相机
 

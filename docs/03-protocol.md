@@ -75,6 +75,36 @@
 | 0x20 | DISCOVER | App→广播 | 发现 | 无会话（独立格式） |
 | 0x21 | ANNOUNCE | Agent→App | 发现 | 无会话（独立格式） |
 
+### 3.1 枚举与流 ID（冻结）
+
+| 项 | 值 |
+|---|---|
+| `stream` | 0=ctrl，1=telemetry，2=video，3=depth，4=map，5=config，6=feedback |
+| `role` | 0=controller，1=viewer |
+| `pair_state` | 0=unpaired，1=paired |
+| `fsm_state`（TELEM） | 0=disarmed/idle，1=armed，2=estop，3=fault |
+| `fault_flags`（TELEM） | bit0=watchdog，bit1=estop latched，bit2=state stale，bit3=controller lost，其余保留 |
+| capability `streams[].id` | 逻辑流编号（0,1,…），不是帧头 `stream`；帧头 VIDEO=2、DEPTH=3、MAP=4 |
+| `SESSION_CTRL.action` | 0=claim，1=release，2=request_viewer，3=arm，4=release_estop；其他值返回 ERROR 0x0301 |
+| `EVENT.code` | 0x0001=estop_acked，0x0002=watchdog，0x0003=armed，0x0004=session_expired，0x0005=estop_released |
+| `ERROR.code` | 见 §9 |
+| `media_flags`（VIDEO） | bit0 IDR、bit1 SPS/PPS、bit2 帧结束、bit3 关键帧请求响应 |
+
+### 3.2 消息载荷（冻结）
+
+| 消息 | 载荷 |
+|---|---|
+| SESSION_CTRL | `action u8, reserved u8[3]` |
+| EVENT | `code u16, level u8, msg_len u8 + utf8`（level：0=info，1=warn，2=error） |
+| ERROR | `code u16, msg_len u8 + utf8` |
+| PING | `ts_us u64`（发送端单调时钟） |
+| PONG | `echo_ts_us u64`（原样回显 PING 的时间戳） |
+| FEEDBACK | `video_ok u32, video_lost u32, packets_lost u32, recv_kbps u32, decode_fps u16, decode_ms u16, rtt_us u32, jitter_us u32, target_kbps u32, flags u16, reserved u16`（36 B） |
+| CTRL | 见 §5 |
+| TELEM | protobuf，见 §7.5 与 `protocol/proto/telemetry.proto` |
+| CAPS | 见 §4.4 |
+| VIDEO/DEPTH/MAP | 见 §7.2–7.4 |
+
 ## 4. 握手与能力
 
 ### 4.1 时序
@@ -94,22 +124,26 @@ App                                   Agent
  │◀─────── FEEDBACK 50Hz ───────────────│   （视频/深度开始后）
 ```
 
-- **认证门（fail-closed）**：除 `HELLO`/`AUTH` 外，所有帧必须已加密 + `session_id` 匹配 + 来源地址为当前会话；
-  未认证的 `claim`/`CTRL`/`ESTOP`/`release_estop` 一律丢弃并计数，不得执行。
+- **明文例外集（唯一）**：`HELLO`、`HELLO_ACK`、`AUTH`、`AUTH_OK`，以及认证前的 `ERROR`
+  （仅 0x0101/0x0103/0x0602，且限速 ≤2 次/秒/来源）。其余所有帧必须已加密 + `session_id` 匹配 +
+  来源地址为当前会话；未认证的 claim/CTRL/ESTOP/release_estop 一律丢弃并计数，不得执行。
+- `AUTH` 只能针对本来源的 pending 会话：帧 `session_id` 必须等于该 pending 会话 ID；每次 pending 只接受一次
+  AUTH（AUTH_OK 后不接受重复/重放 AUTH）；失败计数 per-来源。
 - HELLO 前不允许发送任何控制消息；未认证的 CTRL 丢弃并计数。
 - `claim` 只授予控制权，**不等于 arm**；必须再发 `SESSION_CTRL(arm)` 才能接受 CTRL。
-- `HELLO_ACK` 中的 `ports` 允许 Agent 使用非默认端口；v1 实时流统一走 ctrl 端口。
+- `HELLO_ACK` 的 `video_port/depth_port/map_port` 在 v1 单端口模式下置 0（表示复用 ctrl 端口）；
+  `ports` 允许 Agent 使用非默认端口。
 - `caps_hash = SHA-256(canonical_json)[0:4]`（canonical 见 §4.4）；App 收到 CAPS 后校验并缓存。
-- `AUTH` 失败返回 ERROR(code=0x0101)，连续 5 次失败锁定 30 s。
-- 会话超时：5 s 无任何有效加密帧 → 断开；清理 claimed/armed/peer/密钥，**急停锁存保留**；
-  新会话需 `release_estop` + `arm` 才能恢复控制。重连窗口 10 s。
+- `AUTH` 失败返回 ERROR(code=0x0101)，per-来源连续 5 次失败锁定 30 s；锁定只影响该来源。
+- 会话超时：5 s 无“成功解密 + CRC 通过 + session 匹配”的帧 → 会话失效；清理 claimed/armed/peer/方向密钥；
+  **不保留重连密钥**（必须新 HELLO+AUTH）；**急停锁存保留**；新会话需 `release_estop` + `arm` 才能恢复控制。
 
 ### 4.2 HELLO / HELLO_ACK 载荷
 
 | 消息 | 字段 |
 |---|---|
 | HELLO | `proto_major u16, proto_minor u16, role u8, flags u16, app_id[16], app_nonce[16], app_version_len u8 + utf8` |
-| HELLO_ACK | `proto_major u16, proto_minor u16, session_id u32, robot_id_len u8 + utf8, robot_name_len u8 + utf8, form_len u8 + utf8, robot_nonce[16], caps_hash u32, ctrl_port u16, video_port u16, depth_port u16, map_port u16, web_port u16, auth_required u8` |
+| HELLO_ACK | `proto_major u16, proto_minor u16, session_id u32, robot_id_len u8 + utf8, robot_name_len u8 + utf8, form_len u8 + utf8, robot_nonce[16], caps_hash u32, ctrl_port u16, video_port u16, depth_port u16, map_port u16, web_port u16, auth_required u8`；v1 单端口模式下 video/depth/map=0 |
 
 ### 4.3 AUTH / AUTH_OK
 
@@ -251,7 +285,7 @@ App                                   Agent
 
 ### 7.5 遥测（TELEM）
 
-使用 protobuf-lite（`telemetry.proto`），关键字段：
+使用 protobuf-lite（`protocol/proto/telemetry.proto`，字段冻结），关键字段：
 
 ```proto
 message Telemetry {
@@ -312,7 +346,7 @@ message Telemetry {
 |---|---|---|---|
 | 0 | 4 | `seq` u32 | 采样序号 |
 | 4 | 8 | `ts_us` u64 | 机器人采样时间（单调时钟） |
-| 12 | 4 | `joint_order_hash` u32 | CRC32(capability.model.joint_order) |
+| 12 | 4 | `joint_order_hash` u32 | CRC32C(UTF-8(joint_order 以 "\n" 连接)) |
 | 16 | 2 | `joint_count` u16 | = len(joint_order) |
 | 18 | 1 | `flags` u8 | bit0 含速度、bit1 含力矩、bit2 根位姿有效 |
 | 19 | 1 | `frame_id` u8 | 0=odom，1=map，2=base |
@@ -323,7 +357,7 @@ message Telemetry {
 | 48+8N | 4×N | `joint_eff` f32[N] | 可选（flags.bit1） |
 
 - `joint_order` 必须与 capability 一致；`joint_order_hash = CRC32C(UTF-8(joint_order 以 "\n" 连接))`；
-  不匹配时 App 不渲染运动并提示（安全相关）。
+  不匹配时 App 不渲染运动并提示（安全相关）。MODEL_STATE 的 `flags.bit2=1` 表示 root_pos/root_quat 有效。
 - 50 关节时约 670 B（含位置/速度），人形 50+ 关节需分片；带宽 10 KB/s 级。
 - 状态过期（>500 ms）→ App 置灰模型；Agent 侧状态新鲜度看门狗另见 09 文档。
 

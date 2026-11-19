@@ -19,9 +19,10 @@
 > 机器人端架构约束（详见 [07-robot-agent.md](07-robot-agent.md) §10）：
 > - 目标仅 **x86_64 与 aarch64**，均为小端；不支持 32 位 armv7（如确需另立 ADR）。
 > - 发布物：`urc-agent` 的 `amd64` 与 `arm64` 包（deb/rpm/多架构容器镜像），同版本、同配置格式。
+> - M0 的 C++ mock/参考 Agent 仅支持 POSIX（Linux）；Windows 本地开发使用 Python 参考服务端，不承诺 C++ mock 在 Windows 原生运行。
 > - ARM 侧硬件编码路径：Rockchip MPP（RK3588/3576/3566）、Jetson `nvv4l2*`、Pi4 `v4l2h264enc`；
 >   x86 侧 VAAPI/NVENC。无硬编时软编仅作兜底。
-> - CI：`agent-build` 矩阵 x86_64 原生 + aarch64 交叉；aarch64 产物在 QEMU 跑协议向量，
+> - CI：`agent-x86_64` 原生 + `agent-aarch64` QEMU 容器；aarch64 产物跑协议向量，
 >   媒体/相机相关用例在目标板（M2 起）验证。
 
 - **能力声明**：每个客户端在 HELLO 中声明 `client_caps`（传输/解码/渲染/手柄/深度），

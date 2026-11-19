@@ -56,8 +56,8 @@ Level 4 增强档：深度/点云/地图/关节命令（按需，1–4 周）
   （不是含实际 crc 的帧头；按后者实现会解密失败）。
 - HKDF 方向子密钥 + 12 B nonce（`dir+3B0+seq`）；**seq 每方向全局、跨流共享**；重放窗口每方向 2048；
   控制/遥测/地图必须加密。
-- 认证门 fail-closed：除 HELLO/AUTH 外，所有帧必须已加密 + session 匹配 + 来源会话一致；
-  未认证的 claim/CTRL/ESTOP/release 一律丢弃并计数。
+- 认证门 fail-closed：明文仅允许 HELLO/HELLO_ACK/AUTH/AUTH_OK 与认证前 ERROR（0x0101/0x0103/0x0602，限速）；
+  其余帧必须已加密 + session 匹配 + 来源一致；未认证的 claim/CTRL/ESTOP/release/arm 一律丢弃并计数（gate_drop）。
 - 会话超时 5 s；认证失败 5 次锁 30 s；单控制者；观察者只读；claim 不等于 arm，必须显式 arm。
 - 控制帧 TTL 200 ms（接收侧排队时间）：过期丢弃；100 Hz 消费；重复帧去重；死手位为 0 时通道清零。
 - **看门狗 300 ms → 零速**；**E-stop 锁存**；复位两步：`release_estop` 只清锁存，`arm` 重新使能；
@@ -66,6 +66,9 @@ Level 4 增强档：深度/点云/地图/关节命令（按需，1–4 周）
 
 ### 4.2 视频
 
+> M0 的 mock/参考服务端不实现 GStreamer/MediaCodec/H.264/FEC；仅发送 **RGB888 160×120@10** 测试图，
+> 并在 capability `streams` 中如实声明（codecs=["rgb888"]）。真实视频链路（H.264/FEC/关键帧）在 M2 实现。
+
 - 编码：H.264 优先（Baseline/Main），CBR、无 B 帧、GOP 1–2 s、关键帧带 SPS/PPS。
 - 分片 ≤1200 B；每帧独立 `frame_id`；XOR FEC 1:8 起；`FEEDBACK` 请求关键帧。
 - 接收端过期丢弃（>150 ms）；解码失败重建解码器。
@@ -73,7 +76,7 @@ Level 4 增强档：深度/点云/地图/关节命令（按需，1–4 周）
 
 ### 4.3 模型状态
 
-- 关节顺序 = capability `model.joint_order`；`joint_order_hash` = CRC32(order)；
+- 关节顺序 = capability `model.joint_order`；`joint_order_hash = CRC32C(UTF-8(joint_order 以 "\n" 连接))`；
 - MODEL_STATE 20–50 Hz；`(w,x,y,z)` 四元数；状态过期 >500 ms 客户端置灰；
 - 模型包 `model.glb+model.json` 走 HTTP，SHA-256 校验；Agent 不在线执行 xacro。
 
@@ -107,32 +110,34 @@ Level 4 增强档：深度/点云/地图/关节命令（按需，1–4 周）
 - 两种模式：
   - `static`：校验 capability JSON、Schema、测试向量、文档链接（CI 每次跑）；
   - `dynamic`：作为“客户端”连接被测服务端（mock 或真实 Agent），跑发现/配对/控制/安全组。
-- 输出：控制台 + `cts-report.json` + 人读 Markdown；P0 失败即非零退出。
+- 输出：控制台 + `cts-report.json`；P0 失败、skipped>0 或报告缺项均非零退出。
+- **报告 schema（冻结）**：
+  ```json
+  {"schema":"urc-cts-report/v1","suite":"dynamic|static|arch","target":"...","started_at":"...",
+   "cases":[{"id":"CTS-P-02","status":"passed|failed|skipped|xfail","duration_ms":0,"detail":""}],
+   "summary":{"passed":0,"failed":0,"skipped":0,"xfail":0}}
+  ```
+- 用例必须用 `@pytest.mark.cts_id("CTS-...")` 标注；报告 hook 从 marker 取 ID。
+- CI 必须断言：P0 ID 集合与 §6.2 完全一致、全部 `passed`、`skipped=0`、`xfail=0`。
+- `CTS-K-01` 属于 `suite=arch`，由 `agent-aarch64` job 生成 `arch-report.json`；其余 P0 属于 `suite=dynamic`。
+  `tools/check_cts_report.py` 校验两份报告的并集等于 12 个 P0 ID。
 
-### 6.2 测试分组与用例（节选，完整清单随实现补充）
+### 6.2 测试分组与用例（P0 完整清单，ID 冻结）
 
 | ID | 级别 | 组 | 用例 | 期望 |
 |---|---|---|---|---|
-| CTS-D-01 | P0 | 发现 | 广播 DISCOVER→ANNOUNCE | 响应含 id/ports/caps_hash；无秘密 |
-| CTS-D-02 | P1 | 发现 | 重复/伪造 ANNOUNCE | App 去重/提示；不自动信任 |
-| CTS-P-01 | P0 | 配对 | 错误秘密 ×5 | 锁定 30 s；错误码 0x0602 |
-| CTS-P-02 | P0 | 配对 | 未认证发 CTRL/ESTOP | 拒绝并计数 |
-| CTS-S-01 | P0 | 会话 | 第二控制者 claim | 0x0103 或只读 |
-| CTS-S-02 | P0 | 会话 | 5 s 无包 | 会话失效；看门狗独立生效 |
-| CTS-C-01 | P0 | 控制 | CTRL 100 Hz 正常 | TELEM 命令回显一致 |
-| CTS-C-02 | P0 | 控制 | TTL 过期帧 | 丢弃；不执行迟到命令 |
-| CTS-C-03 | P0 | 控制 | 越界 axes/未知 mode | 拒绝 + 计数；不 clamp 放行（除非配置） |
-| CTS-S-03 | P0 | 安全 | 断链 300 ms | 零速；≤400 ms 停；恢复需重新 arm |
-| CTS-S-04 | P0 | 安全 | ESTOP | 锁存；estop_acked；控制被忽略 |
-| CTS-S-05 | P0 | 安全 | 重放/篡改控制包 | 100% 拒绝并计数 |
-| CTS-T-01 | P1 | 遥测 | 20 Hz TELEM | 字段完整；`remote_age_ms` 递推合理 |
-| CTS-V-01 | P1 | 视频 | 关键帧/分片/FEC | 帧完整率 ≥ 阈值；丢中片整帧丢弃 |
-| CTS-V-02 | P1 | 视频 | 关键帧请求 | ≤2 s 内恢复 |
-| CTS-M-01 | P1 | 模型 | MODEL_STATE 30 Hz | `joint_order_hash` 匹配；插值正常 |
-| CTS-M-02 | P1 | 模型 | 模型包哈希 | 下载校验失败拒绝加载 |
-| CTS-F-01 | P1 | 故障注入 | 丢包 10%/延迟 50 ms | 控制安全；视频降级可恢复 |
-| CTS-K-01 | P0 | 跨架构 | x86_64/aarch64 向量 | 字节级一致 |
-| CTS-X-01 | P1 | 降级 | client_caps 无 video/depth | 服务端不推对应流；安全逻辑不变 |
+| CTS-D-01 | P0 | 发现 | 广播 DISCOVER→ANNOUNCE | 含 id/ports/caps_hash；无秘密；caps_hash 与 canonical 一致 |
+| CTS-P-01 | P0 | 配对 | 错误秘密 ×5 | 锁定 30 s；锁定期正确 AUTH 仍 0x0602；仅该来源锁定 |
+| CTS-P-02 | P0 | 配对 | 未认证 claim/CTRL/ESTOP/release_estop/arm | 全部无效果、无 armed/estop 事件、`gate_drop` 增加 |
+| CTS-S-01 | P0 | 会话 | 第二控制者 claim | 0x0103；原会话不受影响 |
+| CTS-S-02 | P0 | 会话 | 5 s 无有效帧 | 会话失效；清密钥；新 HELLO；锁存保留 |
+| CTS-C-01 | P0 | 控制 | claim 后未 arm 的 CTRL；arm 后 100 Hz | 未 arm 不生效；arm 后回显一致 |
+| CTS-C-02 | P0 | 控制 | TTL 过期帧 | 丢弃；不执行；`ttl_dropped` 计数 |
+| CTS-C-03 | P0 | 控制 | 越界 axes/未知 mode | 拒绝 + 计数；不 clamp 放行 |
+| CTS-S-03 | P0 | 安全 | 断链 300 ms | 零速；≤400 ms 停；CTRL 不自动 arm，action3 后恢复 |
+| CTS-S-04 | P0 | 安全 | ESTOP | 锁存；estop_acked；ESTOP(0) 不解锁；release_estop 后仍需 arm |
+| CTS-S-05 | P0 | 安全 | 重放/篡改控制包 | 100% 拒绝并计数（replay_drop/aead_fail 分项） |
+| CTS-K-01 | P0 | 跨架构 | x86_64/aarch64 向量 | 字节级一致；suite=arch 报告 |
 
 > 级别：P0 = 发布/接实机门槛；P1 = 基础档完整；P2 = 增强档。
 
@@ -140,7 +145,7 @@ Level 4 增强档：深度/点云/地图/关节命令（按需，1–4 周）
 
 ```bash
 # 静态组（CI 每次）
-pytest conformance -m static --report cts-report.json
+python -m pytest conformance -m static -q
 
 # 动态组 A：CTS 自行启动 Python 参考服务端（默认）
 python -m pytest conformance -m dynamic -q
@@ -159,7 +164,7 @@ python -m pytest conformance -m dynamic -q
 
 - `URC_CTS_REQUIRE_EXTERNAL=1`：缺少 target/mock 直接失败，不允许静默回退 Python ref。
 - `URC_CTS_MOCK_BIN` 模式按用例启动/停止 mock；注入用例通过 fixture 附加 `--hold-next-ms`/`--corrupt-aead` 等参数。
-- CI 必须断言 **skipped=0**；报告 JSON 由 pytest hook 生成并作为 artifact。
+- `cts-report.json` 由 conftest hook 生成（路径 `URC_CTS_REPORT` 可覆盖），CI 断言 P0 ID 集合、全 passed、skipped=0、xfail=0。
 - 安全组默认只读/短时；涉及运动的用例必须显式 `--allow-motion`（对 mock/台架），防误伤实机。
 
 ### 6.4 通过标准

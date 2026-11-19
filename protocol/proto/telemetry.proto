@@ -1,0 +1,31 @@
+// Copyright (c) 2026-2027 zbc
+// URC 协议 v1 遥测（TELEM）protobuf 定义。
+// 说明：M0 的 C++/Kotlin/Python 实现可手写最小 wire 编解码，但字段号/类型必须与本文一致；
+//       M1 起可用 protoc 生成。
+syntax = "proto3";
+
+package urc;
+
+message Telemetry {
+  uint32 seq = 1;
+  uint64 ts_us = 2;
+  uint32 fsm_state = 3;
+  uint32 fault_flags = 4;
+  uint32 battery_pct = 5;
+  float x = 6;
+  float y = 7;
+  float yaw = 8;
+  repeated float joint_q = 9;
+  repeated float joint_dq = 10;
+  repeated float joint_tau = 11;
+  repeated float imu_quat = 12;   // (w,x,y,z)
+  repeated float imu_gyro = 13;   // (x,y,z)
+  string policy_name = 14;
+  uint32 inference_us = 15;
+  uint32 episode_len = 16;
+  uint32 queue_depth = 17;
+  uint32 link_rtt_us = 18;
+  uint32 link_loss_pct = 19;
+  uint32 remote_age_ms = 20;
+  uint32 map_revision = 21;
+}

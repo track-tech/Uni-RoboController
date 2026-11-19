@@ -88,7 +88,7 @@ URDF / xacro ──(xacro 展开)──▶ URDF
   "format": "glb+json/v1",
   "url": "/api/v1/model/ab12cd34.zip",
   "joint_order": ["FL_hip_joint", "..."],     // 与 MODEL_STATE 等长
-  "joint_order_hash": 123456789,               // CRC32(joint_order) 供快速校验
+  "joint_order_hash": 123456789,               // CRC32C(UTF-8(joint_order 以 "\n" 连接)) 供快速校验
   "base_link": "base_link",
   "root_frame": "odom",
   "dof": 16
@@ -97,7 +97,7 @@ URDF / xacro ──(xacro 展开)──▶ URDF
 
 - `joint_order` 必须与遥测/命令的关节顺序一致；适配器负责把机器人 SDK 顺序映射到此顺序
   （参考 rl_sar 的 `joint_names` 与 `joint_mapping`）。
-- `joint_order_hash` 用于握手/状态帧快速校验，避免“名称对但顺序错”的静默错误。
+- `joint_order_hash = CRC32C(UTF-8(joint_order 以 "\n" 连接))`，用于握手/状态帧快速校验，避免“名称对但顺序错”的静默错误。
 - 模型变更（换版本）→ 新 `bundle_hash`；控制中不允许静默替换，需重连/确认。
 
 ## 5. 状态同步协议
