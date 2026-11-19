@@ -1,5 +1,6 @@
 # Copyright (c) 2026-2027 zbc
-# CI：静态检查、协议向量、CTS、双架构 C++ 协议库测试；Android 工程出现后启用 android job。
+# CI：静态检查、协议向量、CTS、x86_64 与 aarch64 C++ 协议库测试。
+# Android 工程出现后再加 android-build job（M1）。
 name: ci
 
 on:
@@ -40,12 +41,8 @@ jobs:
       - run: pip install pytest jsonschema zstandard
       - run: python -m pytest conformance -m dynamic -q
 
-  agent-build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.os }}
+  agent-x86_64:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y cmake g++ libssl-dev
@@ -53,13 +50,16 @@ jobs:
       - run: cmake --build agent/build -j
       - run: ctest --test-dir agent/build --output-on-failure
 
-  android-build:
-    if: ${{ hashFiles('android/settings.gradle.kts') != '' }}
+  agent-aarch64:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - run: cd android && ./gradlew :core:protocol:test :app:assembleDebug
+      - uses: docker/setup-qemu-action@v3
+      - name: Build & test in arm64 container (QEMU)
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v "${{ github.workspace }}:/src" -w /src ubuntu:24.04 \
+            bash -c "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y cmake g++ libssl-dev && \
+                     cmake -S agent -B agent/build-arm64 -DCMAKE_BUILD_TYPE=Release && \
+                     cmake --build agent/build-arm64 -j2 && \
+                     ctest --test-dir agent/build-arm64 --output-on-failure"
