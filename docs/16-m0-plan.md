@@ -1,283 +1,242 @@
-# 16 M0 实施计划（仓库骨架 · 协议内核 · Mock 机器人 · 调试骨架）
+# 16 M0 实施计划（B 方案：协议内核 · CTS · mock/最小参考 Agent · App 骨架）
 
-> 本文把 [10-roadmap.md](10-roadmap.md) 的 M0 展开为**可执行计划**：交付物清单、接口冻结项、
-> 任务分解（WBS）、两周排期、验收 Runbook。M0 完成的判据是：
-> **CI 全绿 + C++/Kotlin/Python 三方通过同一套测试向量 + 真实 Wi-Fi 上 Android 调试骨架
-> 与 mock_robot 全链路跑通（配对→控制→遥测→看门狗→急停）**。
-> 日期：2026-11-18。执行过程中本文是 M0 的唯一任务入口，变更须回写本文。
+> B 方案定位见 [ADR-0014](adr/0014-scope-app-protocol-cts.md)：本项目交付 **Android App + 协议 + CTS +
+> mock/最小参考 Agent**；机器人端生产实现由厂商/社区按 [18 实现指南](18-protocol-implementation-guide.md) 完成。
+> 本文把 M0 展开为可执行计划：交付物、接口冻结、WBS、3 周排期、验收 Runbook。
+>
+> M0 完成判据：**CI 全绿 + C++/Kotlin/Python 三端同一套向量 + CTS 静态组/基础动态组跑通 +
+> App 真机与 mock 全链路（发现→配对→控制→遥测→看门狗→急停）+ 最小参考 Agent 可构建（x86_64/aarch64）**。
+> 日期：2026-11-19。2 人（Android 1、协议/工具/C++ 1），周期 3 周。
 
 ## 1. 目标与范围
 
-### 1.1 目标（2 周，3 条并行工作线）
+### 1.1 目标（3 周）
 
 | 工作线 | 目标 |
 |---|---|
-| A（Android） | Kotlin 协议内核 + UDP 传输 + 最小调试骨架（能连 mock、发控制、收遥测/测试图） |
-| C（C++/Linux） | Agent 协议内核（codec/frag/crypto/session）+ mock_robot + CMake/CTest |
-| T（工具/测试） | Python 参考编解码、测试向量三端对齐、capability JSON Schema、CI、差分测试 |
+| A（Android） | Kotlin 协议内核 + UDP/发现 + 最小调试骨架（发现/配对/控制/遥测/测试图） |
+| C（C++/协议） | `liburc_protocol`（帧/分片/加密/会话）+ mock 服务端 + 最小参考 Agent 骨架 |
+| T（工具/测试） | Python 参考实现、测试向量、capability Schema、**CTS 静态/动态框架**、CI |
 
-### 1.2 M0 明确不做（防范围蔓延）
+### 1.2 M0 不做（防蔓延）
 
-- GStreamer/MediaCodec 视频链路（M2；M0 用**原始 RGB888 测试图**走协议分片，先验证传输层）。
-- 真实深度/点云/地图、`urdf_bundle` 完整版（M3；M0 仅交付 4 份示例 capability + 内置假关节模型）。
-- rl_sar 补丁与实机（M5；但 **R0 补丁接口评审在第 2 周启动**，只评审不编码）。
-- 产品级 Compose UI、前台服务、相机扫码（M1）。
-- WebRTC、录制导出（M2 起分批引入）。
-- 目标板（ARM 硬件编码/GStreamer/相机）验证（M2；M0 只做 aarch64 交叉构建 + QEMU 协议单测）。
-- 对抗全量（14 文档）；M0 只做**故障注入冒烟**（丢包/重放/篡改各一轮）。
+- 真实 GStreamer 视频链路、MediaCodec 解码（M1；M0 用 **原始 RGB888 测试图**走 VIDEO 分片）。
+- 深度/点云/地图/关节命令（v1.1 增强档）。
+- mDNS 发现（M1；M0 只做 UDP 广播发现 + 手动 IP）、相机扫码（M1）。
+- 产品级 UI、前台服务、多手柄完整矩阵（M1）。
+- 生产级参考 Agent（M0 只做“能连、能控制、能回状态”的骨架；单相机视频在 M1）。
+- 跨平台（v1.x/v2）：M0 只保留 KMP-ready 边界与双架构构建。
 
-### 1.3 M0 期间做出的实现级决策（记录，避免反复）
+### 1.3 M0 决策（记录）
 
 | # | 决策 | 理由 |
 |---|---|---|
-| D1 | mock_robot 用 **C++ 复用 Agent 协议内核** `liburc_protocol` | 一套实现两用（mock 即内核的首个消费者），避免 Python/C++ 双实现漂移 |
-| D2 | 另建 **Python 参考编解码** `tools/codec_ref` | 测试向量的唯一真源；供 C++/Kotlin 差分对齐 |
-| D3 | M0 视频走**原始 RGB888 测试图帧**（320×240@10 Hz，走 VIDEO 分片路径） | 不背 MediaCodec/GStreamer 依赖，先把分片/重组/FEC/过期丢弃跑通 |
-| D4 | TELEM 从 M0 起就用 **protobuf**（按 [03-protocol.md](03-protocol.md) §7.5） | 中途换线格式会让全部向量作废 |
-| D5 | 加密第 1 天实现（OpenSSL 3 / `javax.crypto`）；提供 `--no-encrypt` 调试开关但**默认开启** | 认证/重放是安全地基，晚做返工全部向量 |
-| D6 | 配对秘密 M0 用**控制台打印 + 手动粘贴**（`URCPAIR:<base64>`），相机扫码留 M1 | 调试骨架不背相机权限与 zxing 依赖 |
-| D7 | 扫描/手动 IP 并存；mDNS 留 M1（M0 只做 UDP 广播发现 + 手动 IP） | NsdManager 与 MulticastLock 是真实的坑，M0 不引入 |
-| D8 | **M0 引入 aarch64 交叉构建**（编译 + QEMU 协议向量单测）；ARM 硬件编码/目标板验证在 M2 | 机器人端目标为 x86_64 或 ARM64（见 07 文档 §10），双架构必须从 M0 起进入 CI，避免后期移植返工 |
-| D9 | CRC32C 定为 **CRC-32/ISCSI**（见 03 文档 §2），加密 nonce/方向子密钥布局已冻结（02 文档 §5） | 本轮已回写协议文档，向量据此生成 |
-| D10 | M0 起执行 **KMP-ready 边界**：`core:protocol` 禁止 `android.*`/`androidx.*`；crypto/transport/discovery 以接口隔离；加一条 CI 检查 | 为 v1.x iOS/桌面/Web 迁移零返工（见 17 文档） |
+| D1 | mock 与最小参考 Agent 共用 `liburc_protocol` + 同一配置格式 | 一套协议实现两用，避免漂移 |
+| D2 | Python `tools/codec_ref` 为测试向量唯一真源 | C++/Kotlin 差分对齐 |
+| D3 | M0 视频走 RGB888 测试图（320×240@10，VIDEO 通道分片） | 不引入 GStreamer/MediaCodec 依赖 |
+| D4 | TELEM 从 M0 起用 protobuf | 避免中途换格式导致向量作废 |
+| D5 | 加密第 1 天实现（OpenSSL 3 / javax.crypto），默认开启，`--no-encrypt` 仅调试 | 认证/重放是安全地基 |
+| D6 | 配对秘密 M0 用控制台 `URCPAIR:<base64>`，M1 加二维码 | 不背相机权限依赖 |
+| D7 | 发现 M0 实现 **UDP 广播 DISCOVER/ANNOUNCE**；App 自动列表 | 自动发现是 v1 核心体验，M0 先打通 |
+| D8 | aarch64 交叉构建 + QEMU 向量测试在 M0 进入 CI | 机器人端 x86_64/ARM64 双目标（07 文档 §10） |
+| D9 | CRC32C 用 CRC-32/ISCSI；加密布局按 02/03 文档冻结 | 向量据此生成 |
+| D10 | `core:protocol` 保持 KMP-ready（禁止 `android.*`） | v1.x 跨平台迁移零返工 |
+| D11 | **CTS 是 M0 交付物**（静态组 + 基础动态组），不是 M1 才做 | 协议必须有可执行验收 |
+| D12 | 最小参考 Agent 只做单形态/速度+动作/假 URDF 状态 | 活文档，不做生产 Agent |
 
-### 1.4 待项目发起人确认（阻塞项，不阻塞 M0 开工）
+### 1.4 待发起人确认（不阻塞）
 
-| # | 事项 | 影响 | 默认值（未确认时按此执行） |
-|---|---|---|---|
-| Q1 | LICENSE 文件（Apache-2.0？署名？） | 仓库无 LICENSE 不能发 Release | M0 只放 `LICENSE.tbd` 占位说明，v0.1 发布前必须定 |
-| Q2 | CI 是否用 GitHub Actions 免费_runner | 排期按 GH Actions 写 | GH Actions |
-| Q3 | 人力是否为 3 线并行（A/C/T） | 排期伸缩 | 按 3 线排；若单人，M0 拉长到 4–5 周 |
+| # | 事项 | 默认 |
+|---|---|---|
+| Q1 | LICENSE（Apache-2.0？署名） | 先 `LICENSE.tbd` |
+| Q2 | CI 用 GitHub Actions | 是 |
+| Q3 | 参考 Agent 是否也要支持“无相机”纯控制模式 | 默认支持（`--no-camera`） |
 
-## 2. 交付物与文件清单（M0 结束时的仓库形态）
+## 2. 交付物与文件树（M0 结束时）
 
 ```
 Uni-RoboController/
-├── .github/workflows/ci.yml                 # lint / vectors / agent-build / android-build
-├── .gitignore / .gitattributes              # 已存在
-├── LICENSE.tbd                              # 占位（Q1 确认后替换为正式 LICENSE）
-├── CONTRIBUTING.md                          # 精简版：构建入口 + 提交规范 + 文件头要求
-├── docs/                                    # 已存在（本轮新增 16-m0-plan.md）
+├── .github/workflows/ci.yml             # lint / vectors+cts-static / agent(x86+aarch64) / android
 ├── protocol/
-│   ├── README.md                            # 已存在，更新构建说明
-│   ├── schemas/capability.schema.json       # 能力描述 JSON Schema（草案 2020-12）
-│   ├── examples/
-│   │   ├── capability.l4w4.json             # 已存在，接 Schema 校验
-│   │   ├── capability.mock_quadruped.json   # 新增：mock 四足（16 DOF 假关节）
-│   │   ├── capability.mock_humanoid.json    # 新增：mock 人形（29 DOF）
-│   │   ├── capability.mock_wheeled.json     # 新增：mock 轮足（与 l4w4 同构，含 height/pitch 通道）
-│   │   └── capability.mock_arm.json         # 新增：mock 机械臂（7 DOF + 夹爪，joint_position 接口）
-│   └── vectors/                             # 测试向量（三端共用的唯一真源）
-│       ├── frames.json                      # 帧编解码 ~30 例（含非法/边界）
-│       ├── crypto.json                      # HKDF/AES-GCM/重放窗口 ~15 例
-│       ├── frag.json                        # 分片/重组/FEC ~15 例
-│       └── session.json                     # 握手/认证/急停/看门狗场景 ~10 例
+│   ├── schemas/capability.schema.json
+│   ├── examples/capability.{l4w4,mock_quadruped,mock_humanoid,mock_wheeled,mock_arm}.json
+│   └── vectors/{frames,crypto,frag,session}.json      # ≥60 例
+├── conformance/                         # CTS（Python + pytest）
+│   ├── cts/（discovery.py pairing.py security.py control.py telemetry.py video.py model.py）
+│   ├── cts/report.py
+│   └── pyproject.toml
 ├── tools/
-│   ├── codec_ref/                            # Python 参考实现（生成向量 + 差分驱动）
-│   │   ├── urc_ref/（frame.py crc.py crypto.py messages.py）
-│   │   ├── gen_vectors.py                   # 从场景描述生成 vectors/*.json
-│   │   ├── difftest.py                      # 调 C++ CLI 与 Kotlin CLI 对比输出
-│   │   └── check_caps.py                    # 用 jsonschema 校验全部 examples
-│   └── mock_robot/                          # （二进制来自 agent/mock 目标，源码在 agent/ 内）
-├── agent/                                   # C++20 库 + mock 可执行
-│   ├── CMakeLists.txt
-│   ├── include/urc/{frame.h,frag.h,crypto.h,session.h,messages.h,capability.h}
-│   ├── src/{frame.cpp,crc32c.cpp,frag.cpp,crypto.cpp,session.cpp,messages.cpp}
-│   ├── apps/mock_robot.cpp                  # mock_robot 主程序（复用 liburc_protocol）
-│   ├── third_party/（FetchContent：OpenSSL 3、protobuf、yaml-cpp、spdlog、Catch2/GTest）
-│   └── tests/                               # CTest：直接吃 protocol/vectors/*.json
-└── android/
-    ├── settings.gradle.kts / build.gradle.kts / gradle/wrapper/
-    ├── core/protocol/                       # 纯 Kotlin/JVM，无 Android 依赖（可单测）
-    │   └── src/…（Frame.kt Crc32c.kt Frag.kt Crypto.kt Messages.kt）
-    ├── core/transport/                      # UDP + 协程（Android 依赖最小化）
-    └── app/                                 # M0 调试骨架（单 Activity + Compose 调试屏）
-        └── src/androidTest? → 否；仅 src/test（JVM）+ 一个 DebugActivity
+│   ├── codec_ref/（urc_ref/ gen_vectors.py difftest.py check_caps.py）
+│   └── check_kmp_ready.py
+├── agent/                               # C++ 协议库 + mock + 参考 Agent
+│   ├── include/urc/{frame,frag,crypto,session,messages,capability}.h
+│   ├── src/{frame,crc32c,frag,crypto,session,messages}.cpp
+│   ├── apps/mock_robot.cpp
+│   ├── apps/urc-reference-agent.cpp     # 最小参考 Agent 骨架
+│   ├── tests/                           # CTest 吃 vectors
+│   └── CMakeLists.txt
+├── android/
+│   ├── core/protocol/                   # 纯 JVM，KMP-ready
+│   ├── core/transport/                  # UDP + 广播发现
+│   └── app/                             # 调试骨架（发现/配对/摇杆/日志/测试图）
+└── reference/                           # 参考 Agent 的配置/文档（可选独立目录）
 ```
 
-> 每个源文件遵守工作区规范：SPDX 头（`SPDX-License-Identifier: Apache-2.0` 待 Q1）、
-> 中文注释、英文日志。
+## 3. 接口冻结（编码前不再改；改动走文档 + 向量再生成）
 
-## 3. 接口冻结清单（编码开始前不得再改，改动须走文档 + 向量再生成）
+同 [16 旧版] 的 1–9 项保持：帧头/消息枚举/握手/CTRL/MODEL_STATE/TELEM/加密布局/超时数值/向量格式；
+新增：
 
-1. **帧头 32 B**：[03-protocol.md](03-protocol.md) §2（含 CRC32C 参数、AAD 规则）。
-2. **消息枚举与方向**：03 §3（M0 实现 0x01–0x0F、0x19、0x20/0x21；0x10/0x11 的 H.264 路径
-   留 M2，但分片头格式 M0 用 VIDEO 通道承载 RGB 测试图验证）。
-3. **握手时序与字节布局**：03 §4（HELLO/AUTH/CAPS + 会话超时 + 认证锁定）。
-4. **CTRL 载荷**：03 §5（mode/axes/buttons/deadman；TTL 200 ms；重复发送 2 次）。
-5. **MODEL_STATE 载荷**：03 §7.8（joint_order_hash 必须与 capability 一致）。
-6. **TELEM protobuf**：`protocol/telemetry.proto`（M0 新增文件，字段按 03 §7.5；`fault_flags`、
-   `remote_age_ms` 必填，供看门狗观测）。
-7. **加密布局**：02 §5（方向子密钥、12 B nonce、AAD、重放窗口 2048）。
-8. **超时与限速数值**：[09-safety.md](09-safety.md)（TTL 200 ms / 看门狗 300 ms / 会话 5 s /
-   认证失败锁定 5 次 30 s）。
-9. **测试向量格式**：`protocol/vectors/*.json`，每例
-   `{"name": "...", "given": {...字段或十六进制输入...}, "expect": {...或 "hex": "..."}}`；
-   三端测试直接读取同一文件，禁止各自硬编码期望值。
-10. **KMP-ready 边界**：`android/core/protocol` 只允许 Kotlin 标准库与协议自身类型；
-   加密/网络/发现通过接口注入；任何 `android.*`/`androidx.*` 引用由 CI 拒绝合入。
+10. **发现报文**：`DISCOVER/ANNOUNCE` 字段与端口（02 §4、03 §3）；M0 只广播，M1 加 mDNS。
+11. **capability 基础档字段**：`model`、`control.modes`、`safety`、`rates`、`streams`；增强档字段可缺省。
+12. **CTS 用例 ID/级别/报告 JSON 格式**：见 [18 文档](18-protocol-implementation-guide.md) §6。
 
-## 4. mock_robot 行为规格（`agent/apps/mock_robot.cpp`）
+## 4. mock 与参考 Agent 行为
 
-### 4.1 启动与配置
+### 4.1 mock_robot（全协议模拟，用于 App/CTS 开发）
 
 ```
 mock_robot --bind 0.0.0.0 --ctrl-port 47800 --http-port 47880 \
-           --capability protocol/examples/capability.mock_quadruped.json \
-           --secret-file /tmp/urc.secret          # 不存在则生成并打印 URCPAIR:<base64>
-           [--drop pct] [--delay ms] [--stale-state] [--corrupt crc|payload]
-           [--no-encrypt]                          # 仅调试；默认加密开启
+  --capability protocol/examples/capability.mock_quadruped.json \
+  --secret-file /tmp/urc.secret [--no-encrypt] [--no-camera] \
+  [--drop pct] [--delay ms] [--stale-state] [--corrupt crc|payload]
 ```
 
-### 4.2 会话与安全行为（必须可测）
+- 广播 `ANNOUNCE`；AUTH 5 次失败锁 30 s；单控制者；CTRL TTL 200 ms；看门狗 300 ms；
+  ESTOP 锁存；TELEM 20 Hz；MODEL_STATE 30 Hz（16 关节正弦）；测试图 10 Hz（VIDEO 分片）。
+- 故障注入开关可组合，行为可断言（供 CTS F 组使用）。
 
-| 行为 | 规格 |
+### 4.2 最小参考 Agent（骨架，M0 只到“能连能控”）
+
+```
+urc-reference-agent --config /etc/urc/agent.yaml [--no-camera]
+```
+
+- 实现 Level 0–1（发现/配对/会话/控制/遥测/安全）+ 假 MODEL_STATE；
+- 单形态（mock 四足）适配器；速度/动作命令直接映射到内部模拟状态；
+- 视频（M1 接入 GStreamer 单相机）；M0 可只发测试图或 `--no-camera`；
+- 提供 `reference/README.md` 说明“这是最小示例，不是生产 Agent”。
+
+## 5. App 调试骨架（非产品 UI）
+
+- 单 `DebugActivity`：发现列表（广播）→ 粘贴 `URCPAIR:` 秘密 → 连接 → 摇杆 CTRL 100 Hz →
+  显示 TELEM 回显/看门狗事件/测试图（Bitmap 直显）。
+- `core:protocol` JVM 单测吃 `vectors/*.json`；`check_kmp_ready` 保证无平台 API 引用。
+- 仅 JVM 单测；M0 不写 instrumentation。
+
+## 6. CI（四 job）
+
+| job | 内容 |
 |---|---|
-| 发现 | UDP 广播 `DISCOVER`→单播 `ANNOUNCE`（无 mDNS） |
-| 配对 | 固定秘密文件；`AUTH` 校验 HMAC；错 5 次锁 30 s，回 ERROR 0x0101/0x0602 |
-| 单控制者 | 第二个 `SESSION_CTRL(claim)` → ERROR 0x0103；已有会话 5 s 无包失效 |
-| CTRL | 100 Hz 消费；TTL>200 ms 丢弃并计数；越界 axes 拒绝（ERROR 0x0301 限速日志） |
-| 看门狗 | >300 ms 无 CTRL → TELEM 标记 `watchdog_fired`、假机器人“零速”；恢复需重新 arm |
-| ESTOP | 锁存；只接受显式复位流程；EVENT(estop_acked) 回执 |
-| 状态新鲜度 | `--stale-state` 模式：停发 MODEL_STATE，验证消费侧置灰/告警路径 |
+| `lint` | Markdown 链接、capability Schema、KMP-ready 检查 |
+| `vectors` | Python 参考自测 + `gen_vectors.py --check` + **CTS 静态组** |
+| `agent-build` | 矩阵 x86_64 原生 + aarch64 交叉；CTest 吃向量；aarch64 QEMU 跑向量 |
+| `android-build` | JDK 17 + Android SDK：`:core:protocol:test` + `:app:assembleDebug` |
 
-### 4.3 数据流
-
-- **TELEM**：20 Hz protobuf（FSM=mock、命令回显、`remote_age_ms`、丢包计数）。
-- **MODEL_STATE**：30 Hz；16 关节正弦摆动 + 根位姿绕圈（无 URDF 也先发，M0 骨架只打印统计）。
-- **测试图**：VIDEO 通道 320×240 RGB888 @10 Hz，按 03 §7.2 分片头走分片/FEC（XOR 1:8）；
-  接收端丢中片→整帧丢弃；`--drop/--delay/--corrupt` 验证降级。
-
-### 4.4 故障注入开关（14 文档的冒烟子集）
-
-`--drop 30 --delay 100 --corrupt payload --stale-state` 必须可独立/组合开启，行为可预测、可断言。
-
-## 5. Android 调试骨架规格（`android/app`，非产品 UI）
-
-- 单 `DebugActivity`（Compose）：日志区 + 连接区（IP:Port + 粘贴 `URCPAIR:` 秘密）+ 摇杆区 + 统计区。
-- `core-protocol` 纯 JVM：吃 `vectors/*.json` 的单测必须全绿（与 C++ 同一套向量）。
-- `core-transport`：协程 UDP；重连退避 0.5/1/2/4 s；`LinkStats`（RTT/丢包/间隔 P99）。
-- 控制发送：屏幕双摇杆 → CTRL @100 Hz（deadman=按住才发 1）；显示 mock 回显与看门狗事件。
-- 测试图：RGB 帧组装 → `Bitmap` 直显（约 5–10 fps 即可，验证分片重组）。
-- 仅 JVM 单测（`src/test`）；M0 不写 instrumentation/emulator 测试。
-
-## 6. CI 规格（`.github/workflows/ci.yml`，四 job）
-
-| job | 触发 | 内容 |
-|---|---|---|
-| `lint` | 全部 PR/push | Markdown 相对链接检查；`check_caps.py` 校验 5 份 capability；向量 JSON 语法 |
-| `vectors` | 全部 | `codec_ref` 自测（Python 吃自己生成的向量）；`gen_vectors.py --check` 确认向量与源同步 |
-| `agent-build` | `agent/**` 变更 + 全部 push | ubuntu-latest：CMake 矩阵 **x86_64 原生 + aarch64 交叉**；构建 `liburc_protocol` + `mock_robot`；x86 直跑 CTest，aarch64 产物在 QEMU 下跑协议向量 |
-| `android-build` | `android/**` 变更 + 全部 push | ubuntu-latest：JDK 17 + Android SDK，`./gradlew :core:protocol:test :app:assembleDebug` |
-
-> Gradle wrapper 的 `gradle-wrapper.jar` 允许入库（`.gitattributes` 已标 binary）。
-> 分支保护建议（网页操作）：`main` 要求 CI 绿 + squash merge；先由发起人在 GitHub 上开启。
-
-## 7. WBS（工作分解，估算单位：人日）
+## 7. WBS（人日，2 人 3 周 ≈ 30 人日）
 
 | ID | 任务 | 线 | 估 | 依赖 | DoD |
 |---|---|---|---|---|---|
-| T1.1 | 仓库骨架：CMake/Gradle/目录/third_party FetchContent | C | 2 | — | 空目标可构建，`ctest`/`gradlew test` 空跑通过 |
-| T1.2 | CI 四 job + `check_caps.py` + capability Schema | T | 2 | T7 并行 | 任一 job 失败可阻断；故意提交坏 JSON 验证 |
-| T1.3 | aarch64 交叉构建 + QEMU 向量单测（agent-build 矩阵） | C | 1.5 | T1.1、T2.1 | 交叉产物生成；QEMU 下 frames/crypto 向量全绿 |
-| T2.1 | `codec_ref` Python：frame/crc/crypto/messages + `gen_vectors.py` | T | 3 | — | 生成 4 份向量文件；Python 自测全绿 |
-| T3.1 | C++ 内核：frame+crc32c+frag | C | 3 | T2.1 | CTest 消费 frames/frag 向量全绿 |
-| T3.2 | C++ 内核：crypto(OpenSSL)+session+replay | C | 3 | T3.1 | crypto/session 向量全绿；`--no-encrypt` 可关 |
-| T3.3 | C++ protobuf TELEM + capability 加载（yaml-cpp/json） | C | 2 | T3.1 | mock 能发合法 TELEM/加载 5 份 capability |
-| T4.1 | Kotlin 内核：frame+crc32c+frag（纯 JVM） | A | 3 | T2.1 | 同套向量全绿 |
-| T4.2 | Kotlin crypto(javax.crypto)+session | A | 2 | T4.1 | crypto/session 向量全绿 |
-| T5.1 | mock_robot（会话/CTRL/看门狗/ESTOP/注入开关） | C | 3 | T3.2,T3.3 | §4 行为逐条可断言；含测试图发送 |
-| T6.1 | Android UDP transport + LinkStats | A | 2 | T4.2 | 对 mock 的 RTT/丢包统计可见 |
-| T6.2 | 调试骨架 UI（连接/摇杆/日志/统计/测试图直显） | A | 3 | T6.1 | 真机 Wi-Fi 全链路手动跑通 |
-| T7 | 4 份 mock capability + Schema + 校验脚本 | T | 1.5 | — | 5 份 JSON 全部过 Schema |
-| T8 | 差分测试 `difftest.py`（驱动 C++ CLI 与 Kotlin CLI） | T | 2 | T3.2,T4.2 | 三端同向量输出逐字节一致 |
-| T9 | 验收 Runbook 执行 + 报告 + 复盘（含 R0 评审材料） | 全员 | 1.5 | T5,T6,T8 | §9 全绿；产出 `docs/reports/m0-report.md` |
+| T1.1 | 仓库骨架：CMake/Gradle/目录/third_party | C | 2 | — | 空目标可构建 |
+| T1.2 | CI 四 job + Schema + KMP-ready 检查 | T | 2 | T7 并行 | 故意坏 JSON 可阻断 |
+| T1.3 | aarch64 交叉 + QEMU 向量（agent 矩阵） | C | 1.5 | T1.1,T2.1 | 交叉产物 + QEMU 向量绿 |
+| T2.1 | `codec_ref` + `gen_vectors.py` | T | 3 | — | 4 份向量 ≥60 例 |
+| T2.2 | **CTS 静态组 + 动态框架** | T | 3 | T2.1 | `cts-report.json` 生成；对 mock 可跑 |
+| T3.1 | C++ frame+crc32c+frag | C | 3 | T2.1 | 向量全绿 |
+| T3.2 | C++ crypto+session+replay | C | 3 | T3.1 | 向量全绿；`--no-encrypt` |
+| T3.3 | C++ protobuf TELEM + capability 加载 | C | 2 | T3.1 | mock 发合法 TELEM |
+| T4.1 | Kotlin frame+crc32c+frag（纯 JVM） | A | 3 | T2.1 | 同套向量全绿 |
+| T4.2 | Kotlin crypto+session | A | 2 | T4.1 | 同套向量全绿 |
+| T5.1 | mock_robot（发现/会话/CTRL/看门狗/ESTOP/注入/测试图） | C | 3 | T3.2,T3.3 | §4.1 行为可断言 |
+| T5.2 | 最小参考 Agent 骨架（Level 0–1 + 假模型状态） | C | 2 | T3.3 | App 可连、可控、可看状态 |
+| T6.1 | Android UDP 传输 + 广播发现 + LinkStats | A | 3 | T4.2 | 自动发现列表；RTT/丢包可见 |
+| T6.2 | 调试骨架 UI（连接/摇杆/日志/测试图） | A | 3 | T6.1 | 真机 Wi-Fi 全链路 |
+| T7 | 4 份 mock capability + Schema | T | 1.5 | — | 5 份 JSON 过 Schema |
+| T8 | 差分测试 `difftest.py`（C++/Kotlin） | T | 2 | T3.2,T4.2 | 字节级一致 |
+| T9 | 验收 Runbook + 报告 + 复盘 | 全员 | 2 | T5,T6,T8 | §9 全绿；`docs/reports/m0-report.md` |
 
-> 关键路径：T2.1 → T3.1/4.1 → T3.2/4.2 → T5.1/6.1 → T6.2 → T9。
-> 总计约 **33.5 人日**（3 线并行 ≈ 2 周；单人 ≈ 6.5–7 周按 D 序贯执行）。
-> **架构矩阵**：机器人端目标为 x86_64 或 ARM64（见 07 文档 §10），`agent-build` 必须同时产出两种架构。
+> 关键路径：T2.1 → T2.2/T3.1/4.1 → T3.2/4.2 → T5.1/6.1 → T6.2 → T9。
+> 总计约 **30 人日**（2 人 3 周；单人约 6 周）。
+> 架构：机器人端目标 x86_64/ARM64，`agent-build` 双架构。
 
-## 8. 两周排期（3 线并行）
+## 8. 3 周排期（2 人）
 
-| 周 | A（Android） | C（C++） | T（工具/测试） |
-|---|---|---|---|
-| W1 前半 | — | T1.1 骨架 | T1.2 CI 起步、T7 capability+Schema、T2.1 参考实现 |
-| W1 后半 | T4.1 Kotlin frame/frag | T3.1 C++ frame/frag | T2.1 收尾出向量 |
-| W2 前半 | T4.2 crypto/session | T3.2 crypto/session、T3.3 TELEM/capability | T8 差分框架 |
-| W2 后半 | T6.1 transport、T6.2 骨架 UI | T5.1 mock_robot | T1.2 CI 收尾、T8 三端对齐 |
-| W2 末 | 联调（真实 Wi-Fi） | 联调 + 注入开关 | T9 Runbook + 报告 + R0 评审会（rl_sar 补丁接口，只评审） |
+| 周 | Android（A） | 协议/工具/C++（C/T） |
+|---|---|---|
+| W1 | 骨架、T4.1 协议内核 | T1.1 骨架、T2.1 参考实现/向量、T1.2 CI |
+| W2 | T4.2 crypto、T6.1 传输/发现 | T3.1–T3.3 C++ 内核、T2.2 CTS 框架、T1.3 交叉构建 |
+| W3 | T6.2 调试骨架 UI | T5.1 mock、T5.2 参考 Agent 骨架、T8 差分、T7 capability |
+| W3 末 | 真机联调 | 联调 + 注入开关 + T9 Runbook/报告 |
 
-## 9. M0 验收 Runbook（全部通过才算 M0 完成）
+## 9. M0 验收 Runbook
 
 ```bash
-# 0) 本地静态
-python tools/codec_ref/gen_vectors.py --check        # 向量与源同步
-python tools/codec_ref/check_caps.py                 # 5 份 capability 过 Schema
-python tools/check_kmp_ready.py                      # core:protocol 不得引用 android.*/androidx.*
+# 0) 静态
+python tools/codec_ref/gen_vectors.py --check
+python tools/codec_ref/check_caps.py
+python tools/check_kmp_ready.py
+pytest conformance -m static --report artifacts/cts-static.json
 
 # 1) 三端向量
 cmake -S agent -B agent/build && cmake --build agent/build -j
-ctest --test-dir agent/build --output-on-failure     # C++ x86_64 吃 vectors/*.json
+ctest --test-dir agent/build --output-on-failure
 cmake -S agent -B agent/build-arm64 -DCMAKE_TOOLCHAIN_FILE=toolchains/aarch64-linux-gnu.cmake
-cmake --build agent/build-arm64 -j                   # aarch64 交叉产物
-qemu-aarch64 -L /usr/aarch64-linux-gnu ./agent/build-arm64/tests/urc_vectors  # QEMU 跑向量
-./gradlew :core:protocol:test                        # Kotlin 吃同一套 vectors
-python tools/codec_ref/difftest.py --all             # 三端逐字节一致
+cmake --build agent/build-arm64 -j
+qemu-aarch64 -L /usr/aarch64-linux-gnu ./agent/build-arm64/tests/urc_vectors
+./gradlew :core:protocol:test
+python tools/codec_ref/difftest.py --all
 
-# 2) 端到端（同一 Wi-Fi，手机真机）
-#   机器人侧（或同机回环 127.0.0.1）
+# 2) 端到端（同一 Wi-Fi，真机）
 ./agent/build/mock_robot --secret-file /tmp/urc.secret \
-    --capability protocol/examples/capability.mock_quadruped.json
-#   → 控制台打印 URCPAIR:<base64>；Android 调试骨架粘贴连接
-#   手动断言清单：
-#   [ ] 配对成功；错误秘密 ×5 → 锁定 30 s（0x0602）
-#   [ ] 摇杆 CTRL 100 Hz；mock 回显正确；间隔 P99 ≤ 20 ms
-#   [ ] 杀掉 App → 300 ms 内 mock watchdog_fired、零速；重连需重新 arm
-#   [ ] ESTOP → 锁存 + estop_acked；复位流程生效
-#   [ ] 测试图 ≥5 fps 显示；中片丢弃时整帧跳过不花屏
-#   [ ] MODEL_STATE 统计：30 Hz、joint_order_hash 匹配
-#   [ ] --stale-state → 骨架状态过期告警路径生效
+  --capability protocol/examples/capability.mock_quadruped.json
+# 控制台打印 URCPAIR:<base64>；App 调试骨架：
+# [ ] 自动发现列表出现 mock（广播）
+# [ ] 配对成功；错误秘密 ×5 → 锁定 30 s
+# [ ] 摇杆 CTRL 100 Hz；TELEM 回显；间隔 P99 ≤20 ms
+# [ ] 杀 App → 300 ms 内 watchdog_fired 零速；重连需重新 arm
+# [ ] ESTOP 锁存 + ack；复位流程
+# [ ] 测试图 ≥5 fps；中片丢失整帧跳过
+# [ ] MODEL_STATE 30 Hz；joint_order_hash 匹配
+# [ ] --stale-state → 状态过期告警
 
-# 3) 故障注入冒烟（对抗子集，M0 只做行为可预测）
+# 3) CTS 动态组（对 mock）
+pytest conformance -m dynamic --target 127.0.0.1:47800 --secret-file /tmp/urc.secret \
+  --report artifacts/cts-mock.json
+# [ ] P0 组全绿（≥8 条）；报告归档
+
+# 4) 参考 Agent
+./agent/build/urc-reference-agent --config reference/agent.yaml --no-camera
+# [ ] App 可发现/配对/控制/看 TELEM；按 Ctrl+C 安全退出
+
+# 5) 故障注入冒烟
 ./agent/build/mock_robot ... --drop 30 --delay 100 --corrupt payload
-#   [ ] 控制降级但看门狗不误触发急停；恢复后自动继续
-#   [ ] 重放录制包（difftest 的 replay 样本）→ 100% 拒绝并计数
-#   [ ] 无崩溃、无内存增长（30 min 浸泡）
-
-# 4) CI
-#   [ ] 四 job 全绿；README 挂 badge
-#   [ ] agent-build 同时产出 x86_64 与 aarch64；QEMU 下协议向量一致
+# [ ] 控制降级不误触发急停；重放 100% 拒绝；30 min 无泄漏
 ```
 
-## 10. 风险与缓解（M0 特有）
+## 10. 风险与缓解
 
 | 风险 | 缓解 |
 |---|---|
-| 三端 CRC32C/HKDF 细节不一致 | 向量驱动开发（T2.1 先行）；`difftest` 逐字节比对 |
-| protobuf 版本漂移（C++/Kotlin 生成代码不一致） | 锁 `telemetry.proto` 版本注释；两端 pin 大版本；向量含编码字节 |
-| Windows 开发机差异（换行/路径） | `.gitattributes` 已定；CI 以 ubuntu 为准；本地 Windows 用 WSL 跑 agent |
-| 真机 Wi-Fi 不可控抖动影响调试 | 联调优先 5 GHz 同 AP；`LinkStats` 可视；必要时用模拟器 `10.0.2.2`（注意 **adb reverse 仅支持 TCP，UDP 不可用**） |
-| Gradle wrapper 二进制入库争议 | 官方推荐方式（wrapper jar 入库）；`.gitattributes` 标 binary |
-| 范围蔓延到 UI/视频 | §1.2 不做清单 + 评审会每末尾对照 |
-| 单人执行导致排期爆炸 | Q3：按 A→C→T 序贯重排为 4–5 周，砍 T6.2 为命令行 CLI 客户端 |
-| aarch64 交叉工具链/sysroot 依赖（OpenSSL/protobuf/GStreamer）配置困难 | M0 只交叉协议内核（无 GStreamer）；用容器镜像预装工具链；QEMU 跑向量；媒体依赖留 M2 目标板 |
+| 三端 CRC/HKDF 不一致 | 向量驱动；difftest 字节级比对 |
+| CTS 过早复杂化拖慢 M0 | M0 只做静态组 + 5–8 条 P0 动态；完整组随 M1 |
+| protobuf 版本漂移 | 锁 proto；两端 pin 大版本；向量含编码字节 |
+| Windows 开发机差异 | `.gitattributes`；agent 用 WSL/容器 |
+| aarch64 工具链配置困难 | M0 只交叉协议内核（无 GStreamer）；容器预装；QEMU 跑向量 |
+| App 与 mock 时间线错位 | 协议内核先冻结；mock 优先于参考 Agent |
+| 范围回摆到“全栈” | ADR-0014 + 本文 §1.2 不做清单；评审会对照 |
+| 单人执行 | 序贯 M0≈6 周；先砍 T5.2 参考 Agent 与 T6.2 调试 UI（用 CLI 客户端验证） |
 
-## 11. M1 预览（M0 完成即开工）
+## 11. M1 预览
 
-- 产品 UI 壳（导航/连接页/控制页横屏）、前台服务（`connectedDevice`）、相机扫码、mDNS 发现。
-- 手柄子系统第一批（`InputDevice` 采集 + Xbox/DualSense 默认 profile + 屏幕虚拟手柄正式版）。
-- rl_sar：R0 评审通过后进入 R1（补丁接口 + 036 仿真回放，见 [13-rl-sar-bridge.md](13-rl-sar-bridge.md) §9）。
-- 对抗：协议 fuzz 常驻 CI（每日 1 h 档）+ 会话状态机属性测试（[14-adversarial-verification.md](14-adversarial-verification.md) §7）。
+- 基础档补全：mDNS/二维码、手柄矩阵、视频（GStreamer/MediaCodec）、URDF 四类模型、CTS P0/P1 全绿。
+- 参考 Agent：单相机 GStreamer 视频、x86_64/aarch64 目标板验证。
+- 实现指南与接入 checklist 随 M1 完善，供第三方接入。
 
-## 12. 完成判据（DoD 汇总）
+## 12. 完成判据
 
-1. §9 Runbook 全绿，产出 `docs/reports/m0-report.md`（含截图/日志/统计）。
-2. CI 四 job 全绿且挂在 `main`；README 徽章更新。
-3. 三端（C++/Kotlin/Python）通过同一套 ≥60 例向量，含 seq 回绕、重放窗口、TTL 过期、
-   未知 type、CRC 篡改、分片丢中片、HKDF/AEAD 边界。
-4. `--drop 30 --delay 100` 下无崩溃、看门狗语义正确；30 min 浸泡无泄漏。
-5. 遗留问题全部开 Issue 并挂到 M1；`LICENSE.tbd` 的处置（Q1）有明确结论或时间点。
-6. **KMP-ready 检查通过**：`core:protocol` 无平台 API 引用，CI 的 `check_kmp_ready` 全绿；
-   为 M7（iOS/桌面）与 M8（Web）迁移预留。
-7. **双架构构建通过**：`agent-build` 同时产出 x86_64 与 aarch64 产物，两架构协议向量一致
-   （机器人端目标为 x86_64 或 ARM64，见 07 文档 §10）。
+1. §9 Runbook 全绿，产出 `docs/reports/m0-report.md`。
+2. CI 四 job 全绿；agent 双架构产物 + QEMU 向量一致。
+3. C++/Kotlin/Python 通过同一套 ≥60 例向量；CTS 静态组 + 基础动态组 P0 全绿。
+4. App 与 mock 真机 Wi-Fi 全链路（发现/配对/控制/遥测/看门狗/急停/测试图）。
+5. 最小参考 Agent 可构建、可连接、可控制（`--no-camera` 模式）。
+6. KMP-ready 检查通过；遗留问题开 Issue 挂 M1；LICENSE 处置有结论。

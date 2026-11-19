@@ -1,8 +1,8 @@
-# 08 多形态机器人抽象与适配器
+# 08 多形态机器人抽象与适配器（协议规范 + 实现参考）
 
-> 目标：一个 App 控制四足、轮式、机械臂、无人机等不同形态；新机器人只写“能力描述 + 适配器”，不改 App。
-> 设计参考：VDA5050 的 factsheet/action 思路、ros2_control/LeRobot 的插件注册、Open-RMF 的 fleet adapter，
-> 以及 ROS 2 标准消息（Twist/Ackermann/JointTrajectory）——但不照搬其复杂度。
+> 能力描述与命令接口是**协议规范**（App 与服务端共同遵守）；适配器由机器人端实现方提供。
+> 本项目提供 mock 适配器与最小参考 Agent 的单形态示例；生产适配器（rl_sar/ROS 2/厂商 SDK）
+> 由厂商/社区按 [18 实现指南](18-protocol-implementation-guide.md) 实现并通过 CTS。
 
 ## 1. 三层职责
 

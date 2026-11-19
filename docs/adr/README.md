@@ -15,6 +15,7 @@
 | [0011](0011-urdf-model-filament.md) | URDF 模型包 + Filament 渲染 | Accepted |
 | [0012](0012-generic-command-interfaces.md) | 通用命令接口（velocity/joint/cartesian/action） | Accepted |
 | [0013](0013-cross-platform-strategy.md) | 跨平台客户端策略（KMP + 平台原生适配，Web 受限） | Accepted |
+| [0014](0014-scope-app-protocol-cts.md) | 范围收敛为 App + 协议 + CTS + mock/最小参考 Agent | Accepted |
 
 ## 新增 ADR 的格式
 

@@ -91,6 +91,9 @@ Uni-RoboController/
 - **维护者**：至少 2 名（Android、机器人端各 1），关键模块有 CODEOWNERS。
 - **决策**：架构/协议/安全变更 → ADR/RFC；维护者共识，冲突由项目负责人裁决。
 - **发布**：语义化版本；协议版本独立；发布说明含已知限制与对抗测试摘要。
+- **交付与治理**：本项目维护 App + 协议 + CTS + mock + 最小参考 Agent；第三方实现通过 CTS 后
+  可登记到 `docs/compat/implementations.md`（待建），项目不为其实机安全背书。
+- **CTS 即门禁**：App 与服务端的兼容以 CTS 结果为准；协议变更必须同步更新向量与 CTS。
 - **构建产物**：Agent 提供 `amd64`/`arm64` 双架构包（deb/rpm/多架构容器镜像），同一版本号；
   CI 同时构建两种架构（aarch64 交叉 + QEMU 向量测试）。
 - **兼容矩阵**：`docs/compat/` 记录 App↔Agent↔适配器↔rl_sar 版本组合与测试结果。

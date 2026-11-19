@@ -1,6 +1,9 @@
 # 06 客户端设计（Android 首发，跨平台演进）
 
-> v1 仅 Android；客户端分级与 iOS/桌面/Web 规划见 [17-cross-platform.md](17-cross-platform.md)。
+> **范围说明（B 方案 / ADR-0014）**：v1 只做 Android **基础档**（发现/配对/控制/遥测/视频/URDF 状态/手柄/安全交互）；
+> 深度/点云/地图/关节命令属于 v1.1 增强档，UI 与服务端按能力协商。
+> 跨平台（iOS/桌面/Web）后置，见 [17-cross-platform.md](17-cross-platform.md)。
+>
 > 本文件同时定义平台适配层的接口边界：媒体解码、3D 渲染、手柄、传输、发现均为平台实现，
 > 协议/会话/能力/命令映射/模型状态等共享逻辑不依赖 Android API（KMP-ready）。
 >

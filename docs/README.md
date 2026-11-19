@@ -22,8 +22,9 @@
 15. [14-adversarial-verification.md](14-adversarial-verification.md) —— 对抗验证方案（发布门禁）。
 16. [15-urdf-model.md](15-urdf-model.md) —— URDF 模型加载、状态同步与 3D 渲染。
 17. [16-m0-plan.md](16-m0-plan.md) —— **M0 实施计划**（交付物/WBS/排期/验收 Runbook，当前执行入口）。
-18. [17-cross-platform.md](17-cross-platform.md) —— 客户端分级跨平台、共享内核与平台适配。
-19. [adr/](adr/) —— 架构决策记录。
+18. [17-cross-platform.md](17-cross-platform.md) —— 客户端分级跨平台、共享内核与平台适配（v1.x/v2）。
+19. [18-protocol-implementation-guide.md](18-protocol-implementation-guide.md) —— **协议实现指南 + CTS**（机器人端实现者必读）。
+20. [adr/](adr/) —— 架构决策记录。
 
 ## 补充文档
 

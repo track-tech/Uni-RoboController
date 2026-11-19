@@ -7,7 +7,15 @@
 3. **热路径自己掌控**：控制帧与视频分片用自定义二进制协议；配置/遥测用可演进的结构化格式。
 4. **每一层可替换**：传输（UDP/WebRTC）、媒体源、编码器、渲染器、地图后端、适配器均为插件式接口。
 5. **安全优先**：机器人侧独立看门狗与急停；App 只是“建议者”，不是安全边界。
-6. **可测试**：mock 机器人 + 可回放抓包，保证无硬件也能开发与回归。
+6. **可测试**：mock 服务端 + CTS + 可回放抓包，保证无硬件也能开发与验收。
+
+### 1.1 交付边界（B 方案）
+
+- 本项目交付：**Android App + 协议 + CTS + mock + 最小参考 Agent + 工具**。
+- 机器人端生产实现由厂商/社区按 [18 实现指南](18-protocol-implementation-guide.md) 完成；
+  本项目不维护生产级多形态 Agent、rl_sar 补丁与完整 SLAM/点云实现。
+- 参考 Agent 只做“基础档最小闭环”，用于联调与示范；CTS 是第三方实现的验收门槛。
+- App 不是安全边界：看门狗/急停/限位/仲裁由机器人端实现，CTS P0 安全组把关。
 
 ## 2. 组件总览
 
@@ -28,7 +36,7 @@
 | `feature-settings` | 视频/深度/地图/手柄/网络设置、日志 | Compose |
 | `app` | 单 Activity、导航、前台服务、权限 | `RobotControlService` |
 
-### 2.2 机器人 Agent
+### 2.2 服务端：mock + 最小参考 Agent（示例）
 
 | 模块 | 职责 | 关键接口 |
 |---|---|---|
@@ -44,9 +52,21 @@
 | `recording` | 视频/遥测/深度/命令录制与导出 | `Recorder` |
 | `util` | 日志、配置、时钟、缓冲区池、统计 | — |
 
+> 上表是**最小参考 Agent/mock** 的模块划分，也是第三方实现的参考结构；
+> 生产 Agent 可裁剪/扩展（多形态、ROS 2、rl_sar 等由实现方自行添加）。
+> `conformance/`（CTS）与 `tools/codec_ref` 是独立测试组件，见 [18](18-protocol-implementation-guide.md)。
+
+### 2.3 一致性测试（CTS）
+
+| 模块 | 职责 |
+|---|---|
+| `conformance/cts` | 以“客户端”身份连接被测服务端，验证发现/配对/会话/控制/遥测/视频/模型/安全 |
+| `conformance/static` | capability Schema、测试向量、文档/协议一致性 |
+| `tools/codec_ref` | Python 参考编解码，生成向量并做差分测试 |
+
 ## 3. 进程与线程模型
 
-### 3.1 Agent（单进程，多线程）
+### 3.1 服务端（单进程，多线程；mock/参考 Agent）
 
 ```
 main
@@ -246,14 +266,15 @@ POST /api/v1/record/start|stop ; /api/v1/map/save|load ; /api/v1/reboot
 Uni-RoboController/
 ├── protocol/                  # 协议定义、示例 capability、codegen 输入（后续）
 ├── shared/                    # 规划（v1.x KMP）：core-protocol/session/robot/platform 接口
+├── conformance/               # CTS：静态组 + 动态组（Python/pytest）
 ├── android/                   # App（v1）
 │   ├── app/                   # 入口、导航、前台服务
 │   ├── core/                  # protocol/transport/media/map/gamepad/robot
 │   └── feature/               # connect/control/map/settings/logs
 ├── ios/ desktop/ web/         # 规划（v1.x/v2，见 17 文档）
-├── agent/                     # C++ Agent
-│   ├── src/{session,transport,media,control,telemetry,mapping,model,http,recording}
-│   ├── include/agent/
+├── agent/                     # 协议库 + mock + 最小参考 Agent（示例，非生产）
+│   ├── include/urc/ src/      # liburc_protocol（帧/分片/加密/会话/消息）
+│   ├── apps/{mock_robot,urc-reference-agent}.cpp
 │   └── config/                # 示例 YAML、capability JSON
 ├── adapters/                  # 机器人适配器（子模块/独立目录）
 │   ├── rl_sar_bridge/         # 网络遥控注入 + 状态回传（含 rl_sar 补丁）

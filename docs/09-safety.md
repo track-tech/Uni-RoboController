@@ -1,8 +1,10 @@
 # 09 安全设计
 
-> 安全不是“功能”，是贯穿 App、Agent、适配器、rl_sar、机器人固件的**分层防御**。
-> 本文定义安全目标、分层职责、状态机、看门狗/急停、失败场景与验收；对抗测试见
-> [14-adversarial-verification.md](14-adversarial-verification.md)。
+> 安全不是“功能”，是贯穿 App、服务端、适配器、rl_sar、机器人固件的**分层防御**。
+> **App 不是安全边界**：看门狗/急停/限位/仲裁必须在机器人端实现；协议强制安全语义，
+> CTS 的 P0 安全组是“接实机”的硬门槛。生产 Agent 由厂商/社区按
+> [18 实现指南](18-protocol-implementation-guide.md) 实现并自证。
+> 对抗测试见 [14-adversarial-verification.md](14-adversarial-verification.md)。
 
 ## 1. 安全目标
 

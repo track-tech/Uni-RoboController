@@ -17,6 +17,10 @@ protocol/
 └── compat/                 # 协议兼容性冒烟脚本（实现阶段加入）
 ```
 
+一致性测试（CTS）在独立目录 [../conformance/](../conformance/) 中实现，读取本目录的
+vectors 与 examples；机器人端实现者请同时阅读
+[../docs/18-protocol-implementation-guide.md](../docs/18-protocol-implementation-guide.md)。
+
 ## 规则
 
 - 协议版本 `major.minor`；major 变更必须同步更新 [../docs/03-protocol.md](../docs/03-protocol.md)

@@ -1,6 +1,9 @@
 # 17 跨平台能力设计（客户端分级 · 共享内核 · 平台适配）
 
-> 背景：v1 约束原是“仅 Android”。项目名为 Uni-RoboController 后，跨平台成为明确目标：
+> **范围说明（B 方案 / ADR-0014）**：v1 仅 Android（基础档），跨平台整体后置到 v1.x（iOS/桌面）
+> 与 v2（Web 受限）。本文件是长期规划与边界约束；v1 只要求共享层 KMP-ready，不引入 KMP 插件。
+>
+> 背景：v1 约束原是“仅 Android”。项目名为 Uni-RoboController 后，跨平台成为长期目标：
 > 同一套协议与能力模型支持 **Android / iOS / Windows / macOS / Linux 桌面 / Web（受限）**，
 > 机器人端 Agent 保持 Linux 为主。本文定义分级、共享边界、平台矩阵、迁移路径与验收，
 > 是 [06-android-app.md](06-android-app.md) 的上位设计（06 变为“Android 首发实现”）。
