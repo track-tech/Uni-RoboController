@@ -22,7 +22,8 @@
 - 真实深度/点云/地图、`urdf_bundle` 完整版（M3；M0 仅交付 4 份示例 capability + 内置假关节模型）。
 - rl_sar 补丁与实机（M5；但 **R0 补丁接口评审在第 2 周启动**，只评审不编码）。
 - 产品级 Compose UI、前台服务、相机扫码（M1）。
-- WebRTC、录制导出、aarch64 交叉构建（M2 起分批引入）。
+- WebRTC、录制导出（M2 起分批引入）。
+- 目标板（ARM 硬件编码/GStreamer/相机）验证（M2；M0 只做 aarch64 交叉构建 + QEMU 协议单测）。
 - 对抗全量（14 文档）；M0 只做**故障注入冒烟**（丢包/重放/篡改各一轮）。
 
 ### 1.3 M0 期间做出的实现级决策（记录，避免反复）
@@ -36,7 +37,7 @@
 | D5 | 加密第 1 天实现（OpenSSL 3 / `javax.crypto`）；提供 `--no-encrypt` 调试开关但**默认开启** | 认证/重放是安全地基，晚做返工全部向量 |
 | D6 | 配对秘密 M0 用**控制台打印 + 手动粘贴**（`URCPAIR:<base64>`），相机扫码留 M1 | 调试骨架不背相机权限与 zxing 依赖 |
 | D7 | 扫描/手动 IP 并存；mDNS 留 M1（M0 只做 UDP 广播发现 + 手动 IP） | NsdManager 与 MulticastLock 是真实的坑，M0 不引入 |
-| D8 | aarch64 交叉构建与容器化推迟到 M2 | M0 只需 x86_64 Linux + Android JVM 单测 |
+| D8 | **M0 引入 aarch64 交叉构建**（编译 + QEMU 协议向量单测）；ARM 硬件编码/目标板验证在 M2 | 机器人端目标为 x86_64 或 ARM64（见 07 文档 §10），双架构必须从 M0 起进入 CI，避免后期移植返工 |
 | D9 | CRC32C 定为 **CRC-32/ISCSI**（见 03 文档 §2），加密 nonce/方向子密钥布局已冻结（02 文档 §5） | 本轮已回写协议文档，向量据此生成 |
 | D10 | M0 起执行 **KMP-ready 边界**：`core:protocol` 禁止 `android.*`/`androidx.*`；crypto/transport/discovery 以接口隔离；加一条 CI 检查 | 为 v1.x iOS/桌面/Web 迁移零返工（见 17 文档） |
 
@@ -166,7 +167,7 @@ mock_robot --bind 0.0.0.0 --ctrl-port 47800 --http-port 47880 \
 |---|---|---|
 | `lint` | 全部 PR/push | Markdown 相对链接检查；`check_caps.py` 校验 5 份 capability；向量 JSON 语法 |
 | `vectors` | 全部 | `codec_ref` 自测（Python 吃自己生成的向量）；`gen_vectors.py --check` 确认向量与源同步 |
-| `agent-build` | `agent/**` 变更 + 全部 push | ubuntu-latest：CMake 构建 `liburc_protocol` + `mock_robot`；CTest 消费同一套向量 |
+| `agent-build` | `agent/**` 变更 + 全部 push | ubuntu-latest：CMake 矩阵 **x86_64 原生 + aarch64 交叉**；构建 `liburc_protocol` + `mock_robot`；x86 直跑 CTest，aarch64 产物在 QEMU 下跑协议向量 |
 | `android-build` | `android/**` 变更 + 全部 push | ubuntu-latest：JDK 17 + Android SDK，`./gradlew :core:protocol:test :app:assembleDebug` |
 
 > Gradle wrapper 的 `gradle-wrapper.jar` 允许入库（`.gitattributes` 已标 binary）。
@@ -178,6 +179,7 @@ mock_robot --bind 0.0.0.0 --ctrl-port 47800 --http-port 47880 \
 |---|---|---|---|---|---|
 | T1.1 | 仓库骨架：CMake/Gradle/目录/third_party FetchContent | C | 2 | — | 空目标可构建，`ctest`/`gradlew test` 空跑通过 |
 | T1.2 | CI 四 job + `check_caps.py` + capability Schema | T | 2 | T7 并行 | 任一 job 失败可阻断；故意提交坏 JSON 验证 |
+| T1.3 | aarch64 交叉构建 + QEMU 向量单测（agent-build 矩阵） | C | 1.5 | T1.1、T2.1 | 交叉产物生成；QEMU 下 frames/crypto 向量全绿 |
 | T2.1 | `codec_ref` Python：frame/crc/crypto/messages + `gen_vectors.py` | T | 3 | — | 生成 4 份向量文件；Python 自测全绿 |
 | T3.1 | C++ 内核：frame+crc32c+frag | C | 3 | T2.1 | CTest 消费 frames/frag 向量全绿 |
 | T3.2 | C++ 内核：crypto(OpenSSL)+session+replay | C | 3 | T3.1 | crypto/session 向量全绿；`--no-encrypt` 可关 |
@@ -192,7 +194,8 @@ mock_robot --bind 0.0.0.0 --ctrl-port 47800 --http-port 47880 \
 | T9 | 验收 Runbook 执行 + 报告 + 复盘（含 R0 评审材料） | 全员 | 1.5 | T5,T6,T8 | §9 全绿；产出 `docs/reports/m0-report.md` |
 
 > 关键路径：T2.1 → T3.1/4.1 → T3.2/4.2 → T5.1/6.1 → T6.2 → T9。
-> 总计约 **32 人日**（3 线并行 ≈ 2 周；单人 ≈ 6.5 周按 D 序贯执行）。
+> 总计约 **33.5 人日**（3 线并行 ≈ 2 周；单人 ≈ 6.5–7 周按 D 序贯执行）。
+> **架构矩阵**：机器人端目标为 x86_64 或 ARM64（见 07 文档 §10），`agent-build` 必须同时产出两种架构。
 
 ## 8. 两周排期（3 线并行）
 
@@ -214,7 +217,10 @@ python tools/check_kmp_ready.py                      # core:protocol 不得引�
 
 # 1) 三端向量
 cmake -S agent -B agent/build && cmake --build agent/build -j
-ctest --test-dir agent/build --output-on-failure     # C++ 吃 vectors/*.json
+ctest --test-dir agent/build --output-on-failure     # C++ x86_64 吃 vectors/*.json
+cmake -S agent -B agent/build-arm64 -DCMAKE_TOOLCHAIN_FILE=toolchains/aarch64-linux-gnu.cmake
+cmake --build agent/build-arm64 -j                   # aarch64 交叉产物
+qemu-aarch64 -L /usr/aarch64-linux-gnu ./agent/build-arm64/tests/urc_vectors  # QEMU 跑向量
 ./gradlew :core:protocol:test                        # Kotlin 吃同一套 vectors
 python tools/codec_ref/difftest.py --all             # 三端逐字节一致
 
@@ -240,6 +246,7 @@ python tools/codec_ref/difftest.py --all             # 三端逐字节一致
 
 # 4) CI
 #   [ ] 四 job 全绿；README 挂 badge
+#   [ ] agent-build 同时产出 x86_64 与 aarch64；QEMU 下协议向量一致
 ```
 
 ## 10. 风险与缓解（M0 特有）
@@ -253,6 +260,7 @@ python tools/codec_ref/difftest.py --all             # 三端逐字节一致
 | Gradle wrapper 二进制入库争议 | 官方推荐方式（wrapper jar 入库）；`.gitattributes` 标 binary |
 | 范围蔓延到 UI/视频 | §1.2 不做清单 + 评审会每末尾对照 |
 | 单人执行导致排期爆炸 | Q3：按 A→C→T 序贯重排为 4–5 周，砍 T6.2 为命令行 CLI 客户端 |
+| aarch64 交叉工具链/sysroot 依赖（OpenSSL/protobuf/GStreamer）配置困难 | M0 只交叉协议内核（无 GStreamer）；用容器镜像预装工具链；QEMU 跑向量；媒体依赖留 M2 目标板 |
 
 ## 11. M1 预览（M0 完成即开工）
 
@@ -271,3 +279,5 @@ python tools/codec_ref/difftest.py --all             # 三端逐字节一致
 5. 遗留问题全部开 Issue 并挂到 M1；`LICENSE.tbd` 的处置（Q1）有明确结论或时间点。
 6. **KMP-ready 检查通过**：`core:protocol` 无平台 API 引用，CI 的 `check_kmp_ready` 全绿；
    为 M7（iOS/桌面）与 M8（Web）迁移预留。
+7. **双架构构建通过**：`agent-build` 同时产出 x86_64 与 aarch64 产物，两架构协议向量一致
+   （机器人端目标为 x86_64 或 ARM64，见 07 文档 §10）。

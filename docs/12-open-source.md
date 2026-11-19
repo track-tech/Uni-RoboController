@@ -91,6 +91,8 @@ Uni-RoboController/
 - **维护者**：至少 2 名（Android、机器人端各 1），关键模块有 CODEOWNERS。
 - **决策**：架构/协议/安全变更 → ADR/RFC；维护者共识，冲突由项目负责人裁决。
 - **发布**：语义化版本；协议版本独立；发布说明含已知限制与对抗测试摘要。
+- **构建产物**：Agent 提供 `amd64`/`arm64` 双架构包（deb/rpm/多架构容器镜像），同一版本号；
+  CI 同时构建两种架构（aarch64 交叉 + QEMU 向量测试）。
 - **兼容矩阵**：`docs/compat/` 记录 App↔Agent↔适配器↔rl_sar 版本组合与测试结果。
 - **分支策略**：`main` 受保护；功能走 PR；release 分支 + 标签；补丁分支按上游 commit 固定。
 

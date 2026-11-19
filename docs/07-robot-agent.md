@@ -18,7 +18,7 @@
 | 项 | 选择 |
 |---|---|
 | 语言 | C++20（异常安全、RAII；热路径避免分配） |
-| 构建 | CMake ≥ 3.22；Conan/vcpkg 可选；Docker 交叉编译镜像（x86_64 / aarch64） |
+| 构建 | CMake ≥ 3.22；Conan/vcpkg 可选；**同一源码双架构**（x86_64 主机原生 + aarch64 交叉编译）；Docker 构建镜像 |
 | 媒体 | GStreamer 1.22+（`appsrc`/`v4l2src`/编码器/`rtph264pay` 或自研 payloader） |
 | 网络 | 原始 UDP socket + epoll；可选 `webrtcbin`（GStreamer ≥1.16 支持 data channel） |
 | 序列化 | Protobuf（遥测/配置）；自定义小端二进制（控制/媒体头） |
@@ -158,15 +158,30 @@ recording:
 
 ## 10. 平台与编码矩阵
 
-| 平台 | 编码元素 | 备注 |
-|---|---|---|
-| x86_64 + Intel/AMD | `vah264enc`/`vah265enc` | VAAPI；无头需 Xorg dummy/KMS |
-| x86_64 + NVIDIA | `nvh264enc`/`nvh265enc` | NVENC；注意驱动/CUDA 依赖 |
-| RK3588 / RK3576 | `mpph264enc`/`mpph265enc` | 无 B 帧；`max-reenc=0`/`zero-copy-pkt=true`/`rc-mode=cbr`（属性以板端为准） |
-| RK3566 | `mpph264enc` | 仅 1080p30/60 单路，注意 CPU |
-| Jetson | `nvv4l2h264enc`/`nvv4l2h265enc` | 按 JetPack 验证；Jetson 不走 NVENC |
-| Raspberry Pi 4 | `v4l2h264enc` | V4L2 M2M；Pi 5 无 H.264 硬编 |
-| 无硬编 | `x264enc tune=zerolatency` | 仅 720p30 兜底，必须告警 |
+| 平台 | 架构 | 编码元素 | 备注 |
+|---|---|---|---|
+| x86_64 + Intel/AMD | x86_64 | `vah264enc`/`vah265enc` | VAAPI；无头需 Xorg dummy/KMS |
+| x86_64 + NVIDIA | x86_64 | `nvh264enc`/`nvh265enc` | NVENC；注意驱动/CUDA 依赖 |
+| RK3588 / RK3576 | aarch64 | `mpph264enc`/`mpph265enc` | 无 B 帧；`max-reenc=0`/`zero-copy-pkt=true`/`rc-mode=cbr`（属性以板端为准） |
+| RK3566 | aarch64 | `mpph264enc` | 仅 1080p30/60 单路，注意 CPU |
+| Jetson | aarch64 | `nvv4l2h264enc`/`nvv4l2h265enc` | 按 JetPack 验证；Jetson 不走 NVENC |
+| Raspberry Pi 4 | aarch64 | `v4l2h264enc` | V4L2 M2M；Pi 5 无 H.264 硬编 |
+| 无硬编 | 双架构 | `x264enc tune=zerolatency` | 仅 720p30 兜底，必须告警 |
+
+> 目标架构：**x86_64 与 aarch64（ARM64）双架构**，同一份 C++ 源码、同一套协议/向量；
+> 均为小端；不支持 32 位 armv7（如需要另立 ADR）。CI 必须同时构建两种架构。
+
+### 10.1 双架构构建与验证
+
+- **工具链**：x86_64 用宿主原生构建；aarch64 用交叉工具链或 `--platform linux/arm64` 容器构建；
+  CMake `CMAKE_TOOLCHAIN_FILE` + 依赖（OpenSSL/protobuf/GStreamer/zstd）交叉编译或使用目标板 sysroot。
+- **CI**：`agent-build` 矩阵 `[x86_64 原生, aarch64 交叉]`；aarch64 产物在 QEMU 下跑
+  `liburc_protocol` 单测与协议向量；媒体/GStreamer 相关用例在目标板（M2 起）跑。
+- **运行时差异**：ARM 板卡注意页大小（4K/16K）、DMA-BUF 零拷贝、RGA 色彩转换、
+  USB3 相机带宽与供电；x86 注意核显/独显驱动与 VAAPI 权限。
+- **性能基线**：x86 与 ARM64 分别记录 720p30/1080p30 编码 CPU、延迟与内存；
+  ARM 侧以 RK3588/Jetson 为基准平台，RK3566/Pi 标注为轻量档。
+- **发布物**：`urc-agent` 提供 `amd64` 与 `arm64` 两种包（deb/rpm/容器镜像），同一版本号、同一配置格式。
 
 ## 11. 权限与运行环境
 

@@ -202,6 +202,8 @@ POST /api/v1/record/start|stop ; /api/v1/map/save|load ; /api/v1/reboot
 | Raspberry Pi 4 | `v4l2h264enc`（V4L2 M2M） | 1080p30 可用；Pi 5 无 H.264 硬编 |
 
 > 注意：这些是 **GStreamer 管线**的能力；Sunshine 的编码后端是另一回事（无 MPP/NVMPI 支持）。
+> Agent 以**同一份源码**构建 x86_64 与 aarch64 两种产物（deb/rpm/容器镜像同版本），
+> 双架构共用协议与行为；32 位 armv7 不支持。详见 [07-robot-agent.md](07-robot-agent.md) §10。
 
 ### 7.2 网络形态
 

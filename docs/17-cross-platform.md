@@ -11,7 +11,15 @@
 |---|---|---|---|
 | **Tier A 全功能低延迟主控** | 原生媒体解码 + 原生渲染 + 完整手柄 + UDP 直连 | Android（v1）、iOS（v1.x）、Windows/macOS/Linux 桌面（v1.x–v2） | 视频/深度/点云/URDF/手柄/控制全功能，延迟目标与 00-scope 一致 |
 | **Tier B 受限客户端** | 浏览器环境：无裸 UDP、Gamepad API 受限、深度大码流不现实 | Web（v2） | 监控、演示、轻控制（速度/动作）、遥测/地图查看；**不承诺**低延迟主控与原始深度流 |
-| **Tier C 机器人端 Agent** | Linux 主机 | x86_64 / aarch64 Linux（主力） | 全功能；Windows/macOS 仅 mock/仿真，不承诺实机部署 |
+| **Tier C 机器人端 Agent** | Linux 主机 | **x86_64 与 aarch64（ARM64）双架构**（同一源码、同一协议/向量） | 全功能；Windows/macOS 仅 mock/仿真，不承诺实机部署 |
+
+> 机器人端架构约束（详见 [07-robot-agent.md](07-robot-agent.md) §10）：
+> - 目标仅 **x86_64 与 aarch64**，均为小端；不支持 32 位 armv7（如确需另立 ADR）。
+> - 发布物：`urc-agent` 的 `amd64` 与 `arm64` 包（deb/rpm/多架构容器镜像），同版本、同配置格式。
+> - ARM 侧硬件编码路径：Rockchip MPP（RK3588/3576/3566）、Jetson `nvv4l2*`、Pi4 `v4l2h264enc`；
+>   x86 侧 VAAPI/NVENC。无硬编时软编仅作兜底。
+> - CI：`agent-build` 矩阵 x86_64 原生 + aarch64 交叉；aarch64 产物在 QEMU 跑协议向量，
+>   媒体/相机相关用例在目标板（M2 起）验证。
 
 - **能力声明**：每个客户端在 HELLO 中声明 `client_caps`（传输/解码/渲染/手柄/深度），
   Agent 按能力降级（例如 Web 客户端不推送原始深度、不启用高码率视频）。

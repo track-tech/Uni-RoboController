@@ -65,6 +65,7 @@
 | Android | Pixel 6/7/8、Samsung S21/S23、小米 13/14、一台平板；Android 10–16 |
 | 手柄 | Xbox One/Series（蓝牙）、DualSense、DualShock 4、Switch Pro、8BitDo、GameSir；USB-C 有线 |
 | 机器人 | x86、RK3588、RK3576、RK3566（至少各一台）；rl_sar 036 实机 + 数字孪生 |
+| 架构 | x86_64 原生 + aarch64 交叉（QEMU 跑协议向量）；ARM 目标板（RK3588/Jetson/Pi4）验证媒体/相机 |
 | 相机 | RealSense D435/D455；USB 摄像头；ROS 2 图像源 |
 
 每个设备记录：型号/OS/手柄模式/连接方式/结果/问题 ID。
