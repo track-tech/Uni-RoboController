@@ -1,0 +1,235 @@
+{
+  "schema": "urc-capability/v1",
+  "robot_id": "mock-humanoid",
+  "name": "Mock Humanoid",
+  "form": "humanoid",
+  "vendor": "urc",
+  "model": {
+    "present": true,
+    "bundle_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "format": "glb+json/v1",
+    "url": "/api/v1/model/mock_humanoid.zip",
+    "joint_order": [
+      "left_hip_pitch_joint",
+      "left_hip_yaw_joint",
+      "left_hip_roll_joint",
+      "left_knee_joint",
+      "left_ankle_pitch_joint",
+      "left_ankle_roll_joint",
+      "right_hip_pitch_joint",
+      "right_hip_yaw_joint",
+      "right_hip_roll_joint",
+      "right_knee_joint",
+      "right_ankle_pitch_joint",
+      "right_ankle_roll_joint",
+      "waist_yaw_joint",
+      "waist_roll_joint",
+      "waist_pitch_joint",
+      "left_shoulder_pitch_joint",
+      "left_shoulder_roll_joint",
+      "left_shoulder_yaw_joint",
+      "left_elbow_joint",
+      "left_wrist_yaw_joint",
+      "left_wrist_pitch_joint",
+      "right_shoulder_pitch_joint",
+      "right_shoulder_roll_joint",
+      "right_shoulder_yaw_joint",
+      "right_elbow_joint",
+      "right_wrist_yaw_joint",
+      "right_wrist_pitch_joint",
+      "neck_yaw_joint",
+      "neck_pitch_joint"
+    ],
+    "joint_order_hash": 1675224183,
+    "base_link": "pelvis",
+    "root_frame": "odom",
+    "dof": 29
+  },
+  "frames": {
+    "odom": "odom",
+    "map": "map",
+    "base": "pelvis"
+  },
+  "transport": {
+    "ctrl_port": 47800,
+    "video_port": 47801,
+    "depth_port": 47802,
+    "map_port": 47803,
+    "web_port": 47880
+  },
+  "rates": {
+    "control_hz": 100,
+    "servo_hz": 200,
+    "policy_hz": 50,
+    "telemetry_hz": 20
+  },
+  "control": {
+    "modes": [
+      {
+        "id": 0,
+        "name": "velocity",
+        "interface": "velocity",
+        "channels": [
+          {
+            "id": "body.linear_x",
+            "range": [
+              -1.0,
+              1.0
+            ],
+            "deadband": 0.05
+          },
+          {
+            "id": "body.linear_y",
+            "range": [
+              -0.5,
+              0.5
+            ],
+            "deadband": 0.05
+          },
+          {
+            "id": "body.angular_z",
+            "range": [
+              -1.2,
+              1.2
+            ],
+            "deadband": 0.05
+          },
+          {
+            "id": "body.height",
+            "range": [
+              -0.1,
+              0.05
+            ],
+            "deadband": 0.02
+          },
+          {
+            "id": "body.pitch",
+            "range": [
+              -0.3,
+              0.3
+            ],
+            "deadband": 0.02
+          }
+        ],
+        "deadman": true
+      }
+    ],
+    "actions": [
+      {
+        "id": "action.get_up",
+        "label": "站立",
+        "risk": "medium"
+      },
+      {
+        "id": "action.get_down",
+        "label": "趴下",
+        "risk": "medium"
+      },
+      {
+        "id": "action.passive",
+        "label": "被动",
+        "risk": "low"
+      },
+      {
+        "id": "action.estop",
+        "label": "急停",
+        "risk": "high",
+        "latched": true
+      }
+    ]
+  },
+  "limits": {
+    "max_linear_speed": 1.0,
+    "max_lateral_speed": 0.5,
+    "max_angular_speed": 1.2,
+    "max_accel": 0.8,
+    "max_yaw_accel": 1.5
+  },
+  "timeouts": {
+    "command_ttl_ms": 200,
+    "watchdog_ms": 300,
+    "state_stale_ms": 500
+  },
+  "safety": {
+    "physical_estop": true,
+    "rc_priority": true,
+    "safe_state": "damping",
+    "actions": {
+      "zero": "safe.zero",
+      "damping": "safe.damping",
+      "get_down": "action.get_down"
+    }
+  },
+  "telemetry": [
+    {
+      "id": "fsm_state"
+    },
+    {
+      "id": "battery"
+    },
+    {
+      "id": "joint_q"
+    },
+    {
+      "id": "joint_dq"
+    },
+    {
+      "id": "joint_tau"
+    },
+    {
+      "id": "imu"
+    },
+    {
+      "id": "queue_depth"
+    },
+    {
+      "id": "faults"
+    }
+  ],
+  "streams": [
+    {
+      "id": 0,
+      "kind": "rgb",
+      "codecs": [
+        "h264"
+      ],
+      "res": [
+        1280,
+        720
+      ],
+      "fps": [
+        30,
+        60
+      ]
+    },
+    {
+      "id": 1,
+      "kind": "depth",
+      "format": "z16",
+      "res": [
+        320,
+        240
+      ],
+      "fps": [
+        10,
+        15
+      ]
+    }
+  ],
+  "map": {
+    "capable": true,
+    "voxel": 0.05,
+    "tile": 4.0,
+    "occupancy": true
+  },
+  "policies": [
+    {
+      "id": 0,
+      "name": "default"
+    }
+  ],
+  "plugins": {
+    "adapter": "mock",
+    "version": "0.1"
+  }
+}

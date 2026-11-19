@@ -1,0 +1,227 @@
+{
+  "schema": "urc-capability/v1",
+  "robot_id": "mock-wheeled",
+  "name": "Mock Wheeled Quadruped",
+  "form": "wheeled_quadruped",
+  "vendor": "urc",
+  "model": {
+    "present": true,
+    "bundle_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "format": "glb+json/v1",
+    "url": "/api/v1/model/mock_wheeled.zip",
+    "joint_order": [
+      "FL_hip_joint",
+      "FL_thigh_joint",
+      "FL_calf_joint",
+      "FL_wheel_joint",
+      "FR_hip_joint",
+      "FR_thigh_joint",
+      "FR_calf_joint",
+      "FR_wheel_joint",
+      "RL_hip_joint",
+      "RL_thigh_joint",
+      "RL_calf_joint",
+      "RL_wheel_joint",
+      "RR_hip_joint",
+      "RR_thigh_joint",
+      "RR_calf_joint",
+      "RR_wheel_joint"
+    ],
+    "joint_order_hash": 3512695161,
+    "base_link": "base_link",
+    "root_frame": "odom",
+    "dof": 16
+  },
+  "frames": {
+    "odom": "odom",
+    "map": "map",
+    "base": "base_link"
+  },
+  "transport": {
+    "ctrl_port": 47800,
+    "video_port": 47801,
+    "depth_port": 47802,
+    "map_port": 47803,
+    "web_port": 47880
+  },
+  "rates": {
+    "control_hz": 100,
+    "servo_hz": 200,
+    "policy_hz": 50,
+    "telemetry_hz": 20
+  },
+  "control": {
+    "modes": [
+      {
+        "id": 0,
+        "name": "velocity",
+        "interface": "velocity",
+        "channels": [
+          {
+            "id": "body.linear_x",
+            "range": [
+              -2.0,
+              2.0
+            ],
+            "deadband": 0.05
+          },
+          {
+            "id": "body.linear_y",
+            "range": [
+              -1.0,
+              1.0
+            ],
+            "deadband": 0.05
+          },
+          {
+            "id": "body.angular_z",
+            "range": [
+              -1.5,
+              1.5
+            ],
+            "deadband": 0.05
+          },
+          {
+            "id": "body.height",
+            "range": [
+              -0.2,
+              0.15
+            ],
+            "deadband": 0.02
+          },
+          {
+            "id": "body.pitch",
+            "range": [
+              -0.4,
+              0.4
+            ],
+            "deadband": 0.02
+          },
+          {
+            "id": "body.roll",
+            "range": [
+              -0.3,
+              0.3
+            ],
+            "deadband": 0.02
+          }
+        ],
+        "deadman": true
+      }
+    ],
+    "actions": [
+      {
+        "id": "action.stand",
+        "label": "站立",
+        "risk": "medium"
+      },
+      {
+        "id": "action.lie",
+        "label": "趴下",
+        "risk": "medium"
+      },
+      {
+        "id": "action.passive",
+        "label": "被动",
+        "risk": "low"
+      },
+      {
+        "id": "action.estop",
+        "label": "急停",
+        "risk": "high",
+        "latched": true
+      }
+    ]
+  },
+  "limits": {
+    "max_linear_speed": 2.0,
+    "max_lateral_speed": 1.0,
+    "max_angular_speed": 1.5,
+    "max_accel": 1.2,
+    "max_yaw_accel": 2.0
+  },
+  "timeouts": {
+    "command_ttl_ms": 200,
+    "watchdog_ms": 300,
+    "state_stale_ms": 500
+  },
+  "safety": {
+    "physical_estop": true,
+    "rc_priority": true,
+    "safe_state": "damping",
+    "actions": {
+      "zero": "safe.zero",
+      "damping": "safe.damping",
+      "get_down": "action.lie"
+    }
+  },
+  "telemetry": [
+    {
+      "id": "fsm_state"
+    },
+    {
+      "id": "battery"
+    },
+    {
+      "id": "joint_q"
+    },
+    {
+      "id": "joint_dq"
+    },
+    {
+      "id": "imu"
+    },
+    {
+      "id": "queue_depth"
+    },
+    {
+      "id": "faults"
+    }
+  ],
+  "streams": [
+    {
+      "id": 0,
+      "kind": "rgb",
+      "codecs": [
+        "h264"
+      ],
+      "res": [
+        1280,
+        720
+      ],
+      "fps": [
+        30,
+        60
+      ]
+    },
+    {
+      "id": 1,
+      "kind": "depth",
+      "format": "z16",
+      "res": [
+        320,
+        240
+      ],
+      "fps": [
+        10,
+        15
+      ]
+    }
+  ],
+  "map": {
+    "capable": true,
+    "voxel": 0.05,
+    "tile": 4.0,
+    "occupancy": true
+  },
+  "policies": [
+    {
+      "id": 0,
+      "name": "default"
+    }
+  ],
+  "plugins": {
+    "adapter": "mock",
+    "version": "0.1"
+  }
+}

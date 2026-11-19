@@ -1,0 +1,248 @@
+{
+  "meta": {
+    "protocol": "urc/1"
+  },
+  "cases": [
+    {
+      "name": "derive/sequential",
+      "kind": "derive",
+      "given": {
+        "secret_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        "app_nonce_hex": "000102030405060708090a0b0c0d0e0f",
+        "robot_nonce_hex": "101112131415161718191a1b1c1d1e1f"
+      },
+      "expect": {
+        "app2robot_hex": "7c44e7f156ea322f20ad788c7cae1b80dfebec48dac788e68ff1670bf865b8a0",
+        "robot2app_hex": "7a1fe5fcd0ed391e7b6e80e5e3bb504c91da1cc2b285f75706cdfdf25e02e5cf",
+        "confirm_hex": "d65863331af4dafc"
+      }
+    },
+    {
+      "name": "derive/zeros",
+      "kind": "derive",
+      "given": {
+        "secret_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+        "app_nonce_hex": "00000000000000000000000000000000",
+        "robot_nonce_hex": "00000000000000000000000000000000"
+      },
+      "expect": {
+        "app2robot_hex": "e2f4b6b5bfe8c3ce7952a8fdad5a22e89666c84522da8451f53f77961da56801",
+        "robot2app_hex": "88c948605cab72ef314425cbd07ae04a6bf6585ca7262c9ba0b686b4e844359c",
+        "confirm_hex": "1e07f50eb889daa3"
+      }
+    },
+    {
+      "name": "derive/ones",
+      "kind": "derive",
+      "given": {
+        "secret_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+        "app_nonce_hex": "02020202020202020202020202020202",
+        "robot_nonce_hex": "03030303030303030303030303030303"
+      },
+      "expect": {
+        "app2robot_hex": "181eb8e6ff7de42ebf9d939a5d0f0b1f0498148b38d07d2561f7bda9e8dfd511",
+        "robot2app_hex": "60b8b73e13f9b0aacfd99adeb1e11981336147a2384e3a55093d9b615338a0d7",
+        "confirm_hex": "44c90e2d2d4b89de"
+      }
+    },
+    {
+      "name": "auth/basic",
+      "kind": "auth",
+      "given": {
+        "secret_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        "app_nonce_hex": "000102030405060708090a0b0c0d0e0f",
+        "robot_nonce_hex": "101112131415161718191a1b1c1d1e1f",
+        "session_id": 305419896
+      },
+      "expect": {
+        "proof_hex": "be8f636854d0363338553937ae64c9d33412f0b0aab78d25740dfe259d82b544"
+      }
+    },
+    {
+      "name": "auth/sid0",
+      "kind": "auth",
+      "given": {
+        "secret_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        "app_nonce_hex": "000102030405060708090a0b0c0d0e0f",
+        "robot_nonce_hex": "101112131415161718191a1b1c1d1e1f",
+        "session_id": 0
+      },
+      "expect": {
+        "proof_hex": "5188ab4034d445df85242e50cd6fa014e566f8e0bd4179868fd0929682a701c0"
+      }
+    },
+    {
+      "name": "aead/app2robot/short",
+      "kind": "aead",
+      "given": {
+        "key_hex": "7c44e7f156ea322f20ad788c7cae1b80dfebec48dac788e68ff1670bf865b8a0",
+        "nonce_hex": "010000000100000000000000",
+        "aad_hex": "686561646572",
+        "plaintext_hex": "78"
+      },
+      "expect": {
+        "ciphertext_hex": "c14b131176b7622fb1fc09ac5bcc337db7"
+      }
+    },
+    {
+      "name": "aead/app2robot/16b",
+      "kind": "aead",
+      "given": {
+        "key_hex": "7c44e7f156ea322f20ad788c7cae1b80dfebec48dac788e68ff1670bf865b8a0",
+        "nonce_hex": "01000000ffffffff00000000",
+        "aad_hex": "4141414141414141414141414141414141414141414141414141414141414141",
+        "plaintext_hex": "000102030405060708090a0b0c0d0e0f"
+      },
+      "expect": {
+        "ciphertext_hex": "2dba0a89a17a0b4a8c46ca71555f7d43a0ab420807345f6576c5e4b1eda45c81"
+      }
+    },
+    {
+      "name": "aead/robot2app/64b",
+      "kind": "aead",
+      "given": {
+        "key_hex": "7a1fe5fcd0ed391e7b6e80e5e3bb504c91da1cc2b285f75706cdfdf25e02e5cf",
+        "nonce_hex": "020000002a00000000000000",
+        "aad_hex": "68647232",
+        "plaintext_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
+      },
+      "expect": {
+        "ciphertext_hex": "4ba584393f502ae512bb60f2183bab5ef3bb9bf7b0bc713c69b815228b5598245f07fb4a0f4f7ba3806255c53a3e0130d5806deba595aa88d67ce9af4cd0494636f00641de23e87e4b9bb49f4a366028"
+      }
+    },
+    {
+      "name": "aead/app2robot/empty",
+      "kind": "aead",
+      "given": {
+        "key_hex": "7c44e7f156ea322f20ad788c7cae1b80dfebec48dac788e68ff1670bf865b8a0",
+        "nonce_hex": "010000000700000000000000",
+        "aad_hex": "",
+        "plaintext_hex": ""
+      },
+      "expect": {
+        "ciphertext_hex": "03870fb35738583f9792c5ae90b26873"
+      }
+    },
+    {
+      "name": "replay/in_window_first",
+      "kind": "replay",
+      "given": {
+        "window": 8,
+        "previous": [
+          100,
+          101,
+          102
+        ],
+        "incoming": 101
+      },
+      "expect": {
+        "accept": false
+      }
+    },
+    {
+      "name": "replay/new_high",
+      "kind": "replay",
+      "given": {
+        "window": 8,
+        "previous": [
+          100,
+          101,
+          102
+        ],
+        "incoming": 103
+      },
+      "expect": {
+        "accept": true
+      }
+    },
+    {
+      "name": "replay/old_out_window",
+      "kind": "replay",
+      "given": {
+        "window": 8,
+        "previous": [
+          100,
+          101,
+          102
+        ],
+        "incoming": 90
+      },
+      "expect": {
+        "accept": false
+      }
+    },
+    {
+      "name": "replay/duplicate",
+      "kind": "replay",
+      "given": {
+        "window": 8,
+        "previous": [
+          100,
+          101,
+          102
+        ],
+        "incoming": 102
+      },
+      "expect": {
+        "accept": false
+      }
+    },
+    {
+      "name": "replay/gap_ok",
+      "kind": "replay",
+      "given": {
+        "window": 8,
+        "previous": [
+          100,
+          102
+        ],
+        "incoming": 101
+      },
+      "expect": {
+        "accept": true
+      }
+    },
+    {
+      "name": "replay/window_edge",
+      "kind": "replay",
+      "given": {
+        "window": 8,
+        "previous": [
+          100,
+          101,
+          102,
+          103,
+          104,
+          105,
+          106,
+          107
+        ],
+        "incoming": 100
+      },
+      "expect": {
+        "accept": false
+      }
+    },
+    {
+      "name": "replay/window_edge_plus",
+      "kind": "replay",
+      "given": {
+        "window": 8,
+        "previous": [
+          100,
+          101,
+          102,
+          103,
+          104,
+          105,
+          106,
+          107
+        ],
+        "incoming": 99
+      },
+      "expect": {
+        "accept": false
+      }
+    }
+  ]
+}

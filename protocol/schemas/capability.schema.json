@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/track-tech/Uni-RoboController/protocol/schemas/capability.schema.json",
+  "title": "URC Capability v1",
+  "type": "object",
+  "required": ["schema", "robot_id", "name", "form", "transport", "rates", "control", "limits", "timeouts", "safety", "streams"],
+  "properties": {
+    "schema": {"const": "urc-capability/v1"},
+    "robot_id": {"type": "string", "minLength": 1, "maxLength": 64},
+    "name": {"type": "string", "minLength": 1, "maxLength": 64},
+    "form": {"enum": ["quadruped", "humanoid", "wheeled_quadruped", "wheeled_diff", "wheeled_ackermann", "wheeled_omni", "manipulator", "mobile_manipulator", "drone", "custom"]},
+    "vendor": {"type": "string"},
+    "model": {"type": "string"},
+    "frames": {
+      "type": "object",
+      "properties": {"odom": {"type": "string"}, "map": {"type": "string"}, "base": {"type": "string"}},
+      "additionalProperties": true
+    },
+    "transport": {
+      "type": "object",
+      "required": ["ctrl_port"],
+      "properties": {
+        "ctrl_port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "video_port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "depth_port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "map_port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "web_port": {"type": "integer", "minimum": 1, "maximum": 65535}
+      },
+      "additionalProperties": true
+    },
+    "rates": {
+      "type": "object",
+      "required": ["control_hz", "telemetry_hz"],
+      "properties": {
+        "control_hz": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "servo_hz": {"type": "integer", "minimum": 1, "maximum": 4000},
+        "policy_hz": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "telemetry_hz": {"type": "integer", "minimum": 1, "maximum": 200},
+        "video_fps": {"type": "integer", "minimum": 1, "maximum": 240}
+      },
+      "additionalProperties": true
+    },
+    "control": {
+      "type": "object",
+      "required": ["modes", "actions"],
+      "properties": {
+        "modes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "interface", "deadman"],
+            "properties": {
+              "id": {"type": "integer", "minimum": 0, "maximum": 255},
+              "name": {"type": "string"},
+              "interface": {"enum": ["velocity", "joint_position", "joint_velocity", "joint_trajectory", "cartesian_pose", "action"]},
+              "channels": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "range"],
+                  "properties": {
+                    "id": {"type": "string"},
+                    "range": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+                    "deadband": {"type": "number"},
+                    "scale": {"type": "number"}
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "groups": {"type": "array", "items": {"type": "string"}},
+              "rate_hz": {"type": "integer"},
+              "deadman": {"type": "boolean"}
+            },
+            "additionalProperties": true
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "label", "risk"],
+            "properties": {
+              "id": {"type": "string"},
+              "label": {"type": "string"},
+              "risk": {"enum": ["low", "medium", "high"]},
+              "hold_ms": {"type": "integer", "minimum": 0},
+              "latched": {"type": "boolean"},
+              "params": {"type": "array", "items": {"type": "string"}},
+              "backend_key": {"type": "string"}
+            },
+            "additionalProperties": true
+          }
+        },
+        "buttons": {"type": "array", "items": {"type": "object"}}
+      },
+      "additionalProperties": true
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "max_linear_speed": {"type": "number"},
+        "max_lateral_speed": {"type": "number"},
+        "max_angular_speed": {"type": "number"},
+        "max_accel": {"type": "number"},
+        "max_yaw_accel": {"type": "number"},
+        "torque": {"type": "array", "items": {"type": "number"}},
+        "joint_ranges": {"type": "array"}
+      },
+      "additionalProperties": true
+    },
+    "timeouts": {
+      "type": "object",
+      "required": ["command_ttl_ms", "watchdog_ms"],
+      "properties": {
+        "command_ttl_ms": {"type": "integer", "minimum": 20},
+        "watchdog_ms": {"type": "integer", "minimum": 50},
+        "state_stale_ms": {"type": "integer", "minimum": 50}
+      },
+      "additionalProperties": true
+    },
+    "safety": {
+      "type": "object",
+      "required": ["safe_state", "actions"],
+      "properties": {
+        "physical_estop": {"type": "boolean"},
+        "rc_priority": {"type": "boolean"},
+        "safe_state": {"enum": ["zero", "damping", "get_down", "custom"]},
+        "actions": {
+          "type": "object",
+          "required": ["zero", "damping"],
+          "properties": {
+            "zero": {"type": "string"},
+            "damping": {"type": "string"},
+            "get_down": {"type": "string"},
+            "custom": {"type": "string"}
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "telemetry": {"type": "array", "items": {"type": "object"}},
+    "streams": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "kind"],
+        "properties": {
+          "id": {"type": "integer"},
+          "kind": {"enum": ["rgb", "depth", "pointcloud", "thermal", "audio"]},
+          "codecs": {"type": "array", "items": {"type": "string"}},
+          "format": {"type": "string"},
+          "res": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
+          "fps": {"type": "array", "items": {"type": "integer"}, "minItems": 1}
+        },
+        "additionalProperties": true
+      }
+    },
+    "map": {
+      "type": "object",
+      "properties": {
+        "capable": {"type": "boolean"},
+        "voxel": {"type": "number"},
+        "tile": {"type": "number"},
+        "occupancy": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
+    "model": {
+      "type": "object",
+      "required": ["present"],
+      "properties": {
+        "present": {"type": "boolean"},
+        "bundle_hash": {"type": "string"},
+        "format": {"type": "string"},
+        "url": {"type": "string"},
+        "joint_order": {"type": "array", "items": {"type": "string"}},
+        "joint_order_hash": {"type": "integer"},
+        "base_link": {"type": "string"},
+        "root_frame": {"type": "string"},
+        "dof": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": true
+    },
+    "policies": {"type": "array", "items": {"type": "object"}},
+    "plugins": {"type": "object"}
+  },
+  "additionalProperties": true
+}

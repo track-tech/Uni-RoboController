@@ -1,0 +1,213 @@
+{
+  "schema": "urc-capability/v1",
+  "robot_id": "mock-arm",
+  "name": "Mock Arm",
+  "form": "manipulator",
+  "vendor": "urc",
+  "model": {
+    "present": true,
+    "bundle_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "format": "glb+json/v1",
+    "url": "/api/v1/model/mock_arm.zip",
+    "joint_order": [
+      "shoulder_pitch_joint",
+      "shoulder_roll_joint",
+      "shoulder_yaw_joint",
+      "elbow_joint",
+      "wrist_pitch_joint",
+      "wrist_roll_joint",
+      "wrist_yaw_joint"
+    ],
+    "joint_order_hash": 438717763,
+    "base_link": "base_link",
+    "root_frame": "base",
+    "dof": 7
+  },
+  "frames": {
+    "odom": "base",
+    "map": "base",
+    "base": "base_link"
+  },
+  "transport": {
+    "ctrl_port": 47800,
+    "video_port": 47801,
+    "depth_port": 47802,
+    "map_port": 47803,
+    "web_port": 47880
+  },
+  "rates": {
+    "control_hz": 100,
+    "servo_hz": 200,
+    "telemetry_hz": 20
+  },
+  "control": {
+    "modes": [
+      {
+        "id": 0,
+        "name": "arm_joint",
+        "interface": "joint_position",
+        "groups": [
+          "left_arm"
+        ],
+        "rate_hz": 100,
+        "channels": [
+          {
+            "id": "arm.joint[0]",
+            "range": [
+              -3.14,
+              3.14
+            ],
+            "deadband": 0.0
+          },
+          {
+            "id": "arm.joint[1]",
+            "range": [
+              -2.0,
+              2.0
+            ],
+            "deadband": 0.0
+          },
+          {
+            "id": "arm.joint[2]",
+            "range": [
+              -3.14,
+              3.14
+            ],
+            "deadband": 0.0
+          },
+          {
+            "id": "arm.joint[3]",
+            "range": [
+              -2.5,
+              2.5
+            ],
+            "deadband": 0.0
+          },
+          {
+            "id": "arm.joint[4]",
+            "range": [
+              -3.14,
+              3.14
+            ],
+            "deadband": 0.0
+          },
+          {
+            "id": "arm.joint[5]",
+            "range": [
+              -2.0,
+              2.0
+            ],
+            "deadband": 0.0
+          },
+          {
+            "id": "arm.joint[6]",
+            "range": [
+              -3.14,
+              3.14
+            ],
+            "deadband": 0.0
+          }
+        ],
+        "deadman": true
+      }
+    ],
+    "actions": [
+      {
+        "id": "action.home",
+        "label": "回零",
+        "risk": "medium"
+      },
+      {
+        "id": "action.gripper_open",
+        "label": "张开夹爪",
+        "risk": "low"
+      },
+      {
+        "id": "action.gripper_close",
+        "label": "闭合夹爪",
+        "risk": "low"
+      },
+      {
+        "id": "action.estop",
+        "label": "急停",
+        "risk": "high",
+        "latched": true
+      }
+    ]
+  },
+  "limits": {
+    "max_linear_speed": 0.5,
+    "max_angular_speed": 1.0,
+    "torque": [
+      30,
+      30,
+      30,
+      30,
+      20,
+      20,
+      20
+    ]
+  },
+  "timeouts": {
+    "command_ttl_ms": 200,
+    "watchdog_ms": 300,
+    "state_stale_ms": 500
+  },
+  "safety": {
+    "physical_estop": true,
+    "safe_state": "damping",
+    "actions": {
+      "zero": "safe.zero",
+      "damping": "safe.damping"
+    }
+  },
+  "telemetry": [
+    {
+      "id": "fsm_state"
+    },
+    {
+      "id": "joint_q"
+    },
+    {
+      "id": "joint_dq"
+    },
+    {
+      "id": "joint_tau"
+    },
+    {
+      "id": "gripper"
+    },
+    {
+      "id": "faults"
+    }
+  ],
+  "streams": [
+    {
+      "id": 0,
+      "kind": "rgb",
+      "codecs": [
+        "h264"
+      ],
+      "res": [
+        1280,
+        720
+      ],
+      "fps": [
+        30
+      ]
+    }
+  ],
+  "map": {
+    "capable": false
+  },
+  "policies": [
+    {
+      "id": 0,
+      "name": "default"
+    }
+  ],
+  "plugins": {
+    "adapter": "mock",
+    "version": "0.1"
+  }
+}

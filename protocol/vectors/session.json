@@ -1,0 +1,179 @@
+{
+  "meta": {
+    "protocol": "urc/1"
+  },
+  "cases": [
+    {
+      "name": "hello/basic",
+      "kind": "hello",
+      "given": {
+        "proto_major": 1,
+        "proto_minor": 0,
+        "role": 0,
+        "flags": 0,
+        "app_id_hex": "6170702d69642d303030303030303031",
+        "app_nonce_hex": "000102030405060708090a0b0c0d0e0f",
+        "app_version": "0.1.0"
+      },
+      "expect": {
+        "hex": "010000000000006170702d69642d303030303030303031000102030405060708090a0b0c0d0e0f05302e312e30"
+      }
+    },
+    {
+      "name": "hello_ack/basic",
+      "kind": "hello_ack",
+      "given": {
+        "proto_major": 1,
+        "proto_minor": 0,
+        "session_id": 305419896,
+        "robot_id": "mock-quadruped",
+        "robot_name": "Mock Quad",
+        "form": "quadruped",
+        "robot_nonce_hex": "101112131415161718191a1b1c1d1e1f",
+        "caps_hash": 3735928559,
+        "ctrl_port": 47800,
+        "video_port": 47801,
+        "depth_port": 47802,
+        "map_port": 47803,
+        "web_port": 47880,
+        "auth_required": 1
+      },
+      "expect": {
+        "hex": "01000000785634120e6d6f636b2d717561647275706564094d6f636b205175616409717561647275706564101112131415161718191a1b1c1d1e1fefbeaddeb8bab9babababbba08bb01"
+      }
+    },
+    {
+      "name": "auth/basic",
+      "kind": "auth",
+      "given": {
+        "proof_hex": "be8f636854d0363338553937ae64c9d33412f0b0aab78d25740dfe259d82b544",
+        "client_id_hex": "636c69656e742d69642d303030303031",
+        "client_name": "Phone"
+      },
+      "expect": {
+        "hex": "be8f636854d0363338553937ae64c9d33412f0b0aab78d25740dfe259d82b544636c69656e742d69642d3030303030310550686f6e65"
+      }
+    },
+    {
+      "name": "auth_ok/basic",
+      "kind": "auth_ok",
+      "given": {
+        "role": 0,
+        "key_confirm_hex": "d65863331af4dafc",
+        "server_ts_us": 1700000000000000
+      },
+      "expect": {
+        "hex": "00d65863331af4dafc00401e18240a0600"
+      }
+    },
+    {
+      "name": "caps/raw",
+      "kind": "caps",
+      "given": {
+        "json_hex": "7b22736368656d61223a227572632d6361706162696c6974792f7631227d",
+        "encoding": 0
+      },
+      "expect": {
+        "hex": "1e0000008f4ce3b7007b22736368656d61223a227572632d6361706162696c6974792f7631227d"
+      }
+    },
+    {
+      "name": "telem/basic",
+      "kind": "telem",
+      "given": {
+        "seq": 5,
+        "ts_us": 123456789,
+        "fsm_state": 2,
+        "fault_flags": 0,
+        "battery_pct": 77,
+        "x": 1.0,
+        "y": -2.0,
+        "yaw": 0.5,
+        "joint_q": [
+          0.5,
+          -0.25
+        ],
+        "joint_dq": [
+          0.1,
+          0.2
+        ],
+        "imu_quat": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "policy_name": "default",
+        "inference_us": 8000,
+        "queue_depth": 2,
+        "link_rtt_us": 1500,
+        "link_loss_pct": 1,
+        "remote_age_ms": 12
+      },
+      "expect": {
+        "hex": "080510959aef3a18022000284d350000803f3d000000c0450000003f4a080000003f000080be5208cdcccc3dcdcc4c3e62100000803f000000000000000000000000720764656661756c7478c03e8001008801029001dc0b980101a0010ca80100"
+      }
+    },
+    {
+      "name": "model_state/basic",
+      "kind": "model_state",
+      "given": {
+        "seq": 9,
+        "ts_us": 123456789,
+        "joint_order_hash": 12345,
+        "joint_count": 3,
+        "flags": 0,
+        "frame_id": 0,
+        "root_pos": [
+          1.0,
+          2.0,
+          3.0
+        ],
+        "root_quat": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "joint_pos": [
+          0.5,
+          -0.5,
+          0.25
+        ]
+      },
+      "expect": {
+        "hex": "0900000015cd5b070000000039300000030000000000803f00000040000040400000803f0000000000000000000000000000003f000000bf0000803e"
+      }
+    },
+    {
+      "name": "discover/basic",
+      "kind": "discover",
+      "given": {
+        "app_nonce_hex": "000102030405060708090a0b0c0d0e0f",
+        "app_id_hex": "6170702d69642d303030303030303031"
+      },
+      "expect": {
+        "hex": "5552433101200000000102030405060708090a0b0c0d0e0f6170702d69642d303030303030303031676931c9"
+      }
+    },
+    {
+      "name": "announce/basic",
+      "kind": "announce",
+      "given": {
+        "robot_id": "mock-quadruped",
+        "robot_name": "Mock Quad",
+        "form": "quadruped",
+        "ctrl_port": 47800,
+        "video_port": 47801,
+        "depth_port": 47802,
+        "map_port": 47803,
+        "web_port": 47880,
+        "caps_hash": 3735928559,
+        "pair_state": 1
+      },
+      "expect": {
+        "hex": "5552433101210000000e6d6f636b2d717561647275706564094d6f636b205175616409717561647275706564b8bab9babababbba08bbefbeadde01010000003faa4df5"
+      }
+    }
+  ]
+}
