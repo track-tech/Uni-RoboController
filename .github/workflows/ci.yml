@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install jsonschema zstandard
+      - run: pip install jsonschema zstandard cryptography
       - run: python tools/check_links.py
       - run: python tools/check_kmp_ready.py
       - run: python tools/codec_ref/check_caps.py
@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install pytest jsonschema zstandard
+      - run: pip install pytest jsonschema zstandard cryptography
       - run: python -m pytest conformance -m static -q
 
   cts:
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install pytest jsonschema zstandard
+      - run: pip install pytest jsonschema zstandard cryptography
       - run: python -m pytest conformance -m dynamic -q
 
   agent-x86_64:
