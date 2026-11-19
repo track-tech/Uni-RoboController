@@ -1,5 +1,7 @@
 # Uni-RoboController
 
+[![ci](https://github.com/track-tech/Uni-RoboController/actions/workflows/ci.yml/badge.svg)](https://github.com/track-tech/Uni-RoboController/actions/workflows/ci.yml)
+
 开源机器人遥操作**协议 + Android 操作端 + 一致性测试（CTS）**项目。
 
 > 仓库：<https://github.com/track-tech/Uni-RoboController>

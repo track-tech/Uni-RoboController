@@ -14,9 +14,9 @@
 | Python 参考服务端（发现/配对/控制/遥测/看门狗/急停/视频/模型状态） | ✅ | `tools/codec_ref/ref_server.py` | CTS 动态测试通过 |
 | CTS 静态组 | ✅ | `conformance/test_static.py` | 7 passed |
 | CTS 动态组 | ✅ | `conformance/test_protocol.py` | 10 passed |
-| CI（lint/vectors/CTS/双架构 C++） | ✅ | `.github/workflows/ci.yml` | 待 GitHub 实际运行确认 |
+| CI（lint/vectors/CTS/双架构 C++） | ✅ | `.github/workflows/ci.yml` | run #4 全绿（含 aarch64 QEMU） |
 | 工具（链接检查/KMP-ready/差分） | ✅ | `tools/` | 本地通过 |
-| aarch64 构建 | ⏳ | CI `ubuntu-24.04-arm` | 本地无 ARM 环境，待 CI 验证 |
+| aarch64 构建 | ✅ | CI QEMU arm64 容器 | 编译 + CTest 通过 |
 | C++ mock_robot / 最小参考 Agent | ⏳ | `agent/apps/`（待建） | — |
 | Kotlin `core:protocol` | ⏳ | `android/`（待建） | — |
 | Android 调试骨架 | ⏳ | `android/app/`（待建） | — |
@@ -52,6 +52,10 @@ agent/build/urc_vectors.exe protocol/vectors         # checks=136 failures=0
 python -m pytest conformance -m static -q            # 7 passed
 python -m pytest conformance -m dynamic -q           # 10 passed
 ```
+
+远程 CI（GitHub Actions，run #4）：`lint`、`vectors`、`cts`、`agent-x86_64`、`agent-aarch64`
+五个 job 全绿；aarch64 通过 QEMU arm64 容器编译并运行 CTest。
+CI 运行记录：<https://github.com/track-tech/Uni-RoboController/actions/workflows/ci.yml>
 
 ## 4. 下一步（按关键路径）
 
