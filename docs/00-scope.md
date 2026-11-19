@@ -2,7 +2,7 @@
 
 ## 1. 一句话目标
 
-做一个**开源、仅 Android、仅局域网**的机器人遥操作平台：手机/平板连上机器人后，
+做一个**开源、局域网优先、客户端分级跨平台**的机器人遥操作平台：手机/平板/桌面连上机器人后，
 能低延迟看视频、用手柄遥控、查看深度与点云地图；同一套 App 通过“能力描述 + 适配器”
 支持多种形态的机器人。
 
@@ -61,11 +61,18 @@
 
 ### 3.7 URDF 模型加载与状态同步
 - 目标机器人不限定具体型号：**任意四足、人形、轮足、机械臂**（以及移动机械臂）均可接入。
-- App 可加载机器人 UGDF 转换后的模型包（glb + 元数据），按遥测实时同步根位姿与关节角，
+- App 可加载机器人 URDF 转换后的模型包（glb + 元数据），按遥测实时同步根位姿与关节角，
   在 3D 视图中渲染机器人状态；支持本地导入 URDF/zip 用于离线预览。
 - 模型包由机器人 Agent 提供（或开发者预生成），带 SHA-256 哈希与版本；App 校验后缓存。
 - 模型与状态解耦：没有 URDF 时控制仍可用，退化为“关节条 + 简化骨架”显示。
 - 关节顺序/限位以 URDF 为准，与 capability、遥测三者一致；不一致时禁止运动渲染并告警。
+
+### 3.8 客户端分级与跨平台（v1.x/v2 起）
+- **Tier A 全功能低延迟主控**：Android（v1 首发）、iOS、Windows/macOS/Linux 桌面（v1.x–v2）。
+- **Tier B 受限客户端**：Web（v2，监控/演示/轻控制；无裸 UDP、原始深度流受限）。
+- 客户端在 HELLO 中声明 `client_caps`；Agent 按能力降级（不推深度/点云/High 编码等）。
+- 协议、能力模型、命令/遥测/模型状态与平台无关；只替换传输/解码/渲染/手柄/发现适配器。
+- 详细设计见 [17-cross-platform.md](17-cross-platform.md)。
 
 ## 4. 非功能需求
 
@@ -84,7 +91,8 @@
 
 ## 5. 约束与假设
 
-- **仅 Android**（`minSdk 26`，`targetSdk` 跟随当年最新稳定版）。
+- **v1 仅 Android 客户端**（`minSdk 26`，`targetSdk` 跟随当年最新稳定版）；
+  共享层从 M0 起按 **KMP-ready** 设计（不引用平台 API），为 iOS/桌面/Web 迁移预留边界。
 - **仅局域网**：不实现 NAT 穿透；不做公网中继。后续如需公网再启用 WebRTC 插件。
 - 机器人端为 **Linux（x86_64/aarch64）**，需具备常见视频硬件编码能力之一；无硬编时允许软件编码但标注性能受限。
 - **不依赖宇树 SDK**：机器人控制通过“适配器”接入（rl_sar 补丁桥接、ROS 2、自定义 MCU 协议、Mock），本项目自身不链接 unitree_sdk2/unitree_legged_sdk。
@@ -95,7 +103,8 @@
 - 观众/多设备场景不承诺多人同时操控；v1 只允许一个操作员 + 可选只读观察。
 - 深度相机以 RealSense / Orbbec / ROS 2 深度话题为参考输入；其他相机通过适配器扩展。
 - 开源许可证以 **Apache-2.0** 为目标；依赖需满足该许可与专利政策（见 12-open-source.md）。
-- 不承诺 iOS、Web 客户端；协议与机器人端保持与客户端平台无关，便于将来扩展。
+- 不承诺 v1 提供 iOS/桌面/Web 客户端；v1.x（M7）交付 iOS/桌面 MVP，v2（M8）交付 Web 受限客户端；
+  协议与机器人端保持平台无关，详见 [17-cross-platform.md](17-cross-platform.md)。
 
 ## 6. 术语
 
@@ -122,5 +131,13 @@
 5. rl_sar 兼容链路可用：App 远程完成 GetUp → Locomotion → GetDown → Passive 全流程，断链/看门狗/E-stop 测试通过。
 6. **URDF 模型同步**：加载四足 16 DOF、人形 29 DOF、轮足 16 DOF、机械臂 7 DOF 四类模型，
    30 Hz 状态同步、60 FPS 渲染，关节顺序/限位与 URDF 一致。
-7. 对抗验证（见 14-adversarial-verification.md）安全不变式 I1–I10 全部通过；协议 fuzz 24h 无崩溃/无内存错误。
+7. 对抗验证（见 14-adversarial-verification.md）安全不变式 I1–I11 全部通过；协议 fuzz 24h 无崩溃/无内存错误。
 8. 文档、mock 机器人、构建脚本齐全，外部开发者能按文档跑通全链路。
+9. **KMP-ready 边界**：`core-protocol` 不依赖 Android API，协议测试向量语言无关，
+   C++/Kotlin 双端字节级一致；为 M7（iOS/桌面）与 M8（Web）迁移预留。
+
+### 7.1 跨平台阶段验收（M7/M8）
+
+- M7：iOS 与桌面客户端完成 控制+视频+手柄+URDF 同步；与 Android 共用 `protocol/vectors`。
+- M8：Web 受限客户端（WebTransport/WebRTC）完成监控/轻控制/地图查看；能力降级正确。
+- 详见 [17-cross-platform.md](17-cross-platform.md)。

@@ -38,6 +38,7 @@
 | D7 | 扫描/手动 IP 并存；mDNS 留 M1（M0 只做 UDP 广播发现 + 手动 IP） | NsdManager 与 MulticastLock 是真实的坑，M0 不引入 |
 | D8 | aarch64 交叉构建与容器化推迟到 M2 | M0 只需 x86_64 Linux + Android JVM 单测 |
 | D9 | CRC32C 定为 **CRC-32/ISCSI**（见 03 文档 §2），加密 nonce/方向子密钥布局已冻结（02 文档 §5） | 本轮已回写协议文档，向量据此生成 |
+| D10 | M0 起执行 **KMP-ready 边界**：`core:protocol` 禁止 `android.*`/`androidx.*`；crypto/transport/discovery 以接口隔离；加一条 CI 检查 | 为 v1.x iOS/桌面/Web 迁移零返工（见 17 文档） |
 
 ### 1.4 待项目发起人确认（阻塞项，不阻塞 M0 开工）
 
@@ -112,6 +113,8 @@ Uni-RoboController/
 9. **测试向量格式**：`protocol/vectors/*.json`，每例
    `{"name": "...", "given": {...字段或十六进制输入...}, "expect": {...或 "hex": "..."}}`；
    三端测试直接读取同一文件，禁止各自硬编码期望值。
+10. **KMP-ready 边界**：`android/core/protocol` 只允许 Kotlin 标准库与协议自身类型；
+   加密/网络/发现通过接口注入；任何 `android.*`/`androidx.*` 引用由 CI 拒绝合入。
 
 ## 4. mock_robot 行为规格（`agent/apps/mock_robot.cpp`）
 
@@ -207,6 +210,7 @@ mock_robot --bind 0.0.0.0 --ctrl-port 47800 --http-port 47880 \
 # 0) 本地静态
 python tools/codec_ref/gen_vectors.py --check        # 向量与源同步
 python tools/codec_ref/check_caps.py                 # 5 份 capability 过 Schema
+python tools/check_kmp_ready.py                      # core:protocol 不得引用 android.*/androidx.*
 
 # 1) 三端向量
 cmake -S agent -B agent/build && cmake --build agent/build -j
@@ -265,3 +269,5 @@ python tools/codec_ref/difftest.py --all             # 三端逐字节一致
    未知 type、CRC 篡改、分片丢中片、HKDF/AEAD 边界。
 4. `--drop 30 --delay 100` 下无崩溃、看门狗语义正确；30 min 浸泡无泄漏。
 5. 遗留问题全部开 Issue 并挂到 M1；`LICENSE.tbd` 的处置（Q1）有明确结论或时间点。
+6. **KMP-ready 检查通过**：`core:protocol` 无平台 API 引用，CI 的 `check_kmp_ready` 全绿；
+   为 M7（iOS/桌面）与 M8（Web）迁移预留。

@@ -158,7 +158,7 @@ POST /api/v1/record/start|stop ; /api/v1/map/save|load ; /api/v1/reboot
 | 默认传输 | 自定义 UDP（RTP 风格分片 + XOR FEC + 反馈） | 局域网可控、开销小、延迟最低、深度/地图可定制；无需 NAT/ICE |
 | 可选传输 | WebRTC 插件 | 需要标准媒体栈/未来公网时启用；接口已抽象 |
 | 视频编码 | H.264 默认，HEVC 可选 | 手机硬解最普及；RK/ARM 硬编成熟；专利风险需评估（见 12） |
-| App | Kotlin + Compose + 原生 MediaCodec + Filament（3D） | 手柄与低延迟解码需要原生 API；URDF/点云统一渲染；跨平台框架引入额外延迟与适配成本 |
+| App | Kotlin + Compose + 原生 MediaCodec + Filament（3D）：**KMP-ready** | 手柄与低延迟解码需要原生 API；URDF/点云统一渲染；共享协议/会话逻辑可迁移 iOS/桌面/Web（见 17 文档） |
 | Agent | C++20 + GStreamer | 硬编/采集生态最完整；ROS 2 兼容性好；实时可控 |
 | 地图 | 体素瓦片 + 2D 占据栅格 | 增量传输友好、实现简单、与导航栈兼容 |
 | 控制抽象 | 能力描述 + 固定通道表 + 适配器插件 | 新机器人只写适配器与能力 JSON，不改 App |
@@ -180,6 +180,14 @@ POST /api/v1/record/start|stop ; /api/v1/map/save|load ; /api/v1/reboot
 - 远程输入注入方式、补丁范围、FSM 动作映射、遥测字段见
   [13-rl-sar-bridge.md](13-rl-sar-bridge.md)。
 
+### 6.3 客户端跨平台演进（v1.x/v2）
+
+- v1 客户端为 Android 原生，但共享域（协议/会话/能力/命令映射/模型状态）从 M0 起按 **KMP-ready**
+  设计：不引用平台 API，crypto/transport 接口化，测试向量语言无关。
+- v1.x 将共享域迁到 KMP（Android/JVM），新增桌面与 iOS 客户端；v2 新增 Web 受限客户端
+  （WebTransport/WebRTC，Tier B）。详情见 [17-cross-platform.md](17-cross-platform.md)。
+- 平台相关能力（解码/渲染/手柄/发现/传输）全部走适配层；热路径不进入跨平台 UI 框架。
+
 ## 7. 部署形态
 
 ### 7.1 机器人端算力
@@ -200,6 +208,17 @@ POST /api/v1/record/start|stop ; /api/v1/map/save|load ; /api/v1/reboot
 - 机器人自带 AP（手机直连）或同一 5GHz 路由器；推荐 5GHz/6GHz、关闭省电、固定信道。
 - 发现：mDNS 优先，广播兜底，扫码最稳。
 - v1 不做公网；若后续需要，启用 WebRTC 插件或 VPN（Tailscale/WireGuard）。
+- 客户端跨平台传输：原生端 UDP；iOS 需本地网络权限；Web 端无裸 UDP，走 WebTransport/WebRTC
+  （见 17 文档 §4）。
+
+### 7.2.1 客户端平台（v1.x/v2）
+
+| 平台 | 等级 | 传输 | 解码/渲染 | 计划 |
+|---|---|---|---|---|
+| Android | A | UDP | MediaCodec + Filament | v1 |
+| iOS | A | UDP（本地网络权限）/WebRTC | VideoToolbox + Filament | v1.x（M7） |
+| Windows/macOS/Linux | A | UDP | FFmpeg/平台硬解 + Filament | v1.x–v2（M7） |
+| Web | B | WebTransport/WebRTC | WebCodecs/WebRTC + three.js | v2（M8） |
 
 ### 7.3 进程边界
 
@@ -224,10 +243,12 @@ POST /api/v1/record/start|stop ; /api/v1/map/save|load ; /api/v1/reboot
 ```
 Uni-RoboController/
 ├── protocol/                  # 协议定义、示例 capability、codegen 输入（后续）
-├── android/                   # App
+├── shared/                    # 规划（v1.x KMP）：core-protocol/session/robot/platform 接口
+├── android/                   # App（v1）
 │   ├── app/                   # 入口、导航、前台服务
 │   ├── core/                  # protocol/transport/media/map/gamepad/robot
 │   └── feature/               # connect/control/map/settings/logs
+├── ios/ desktop/ web/         # 规划（v1.x/v2，见 17 文档）
 ├── agent/                     # C++ Agent
 │   ├── src/{session,transport,media,control,telemetry,mapping,model,http,recording}
 │   ├── include/agent/
@@ -245,8 +266,9 @@ Uni-RoboController/
 
 模块边界规则：
 
-- `core-protocol` 不依赖 Android UI/网络实现；纯 Kotlin/JVM 可单测。
+- `core-protocol` 不依赖 Android UI/网络实现；纯 Kotlin/JVM 可单测；**KMP-ready**（不引用 `android.*`）。
 - `core-transport` 只依赖 `core-protocol`；媒体/地图模块不直接碰 socket。
+- 平台相关实现（解码/渲染/手柄/发现/crypto）只存在于平台层，通过 expect/actual 或接口注入。
 - Agent 的 `adapters` 只依赖 `control` 的接口与 `telemetry` 数据结构，不直接依赖 `transport`。
 - 任何跨模块调用必须通过接口，禁止直接访问别的模块的内部实现。
 

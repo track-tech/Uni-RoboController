@@ -14,6 +14,7 @@
 | [0010](0010-capability-schema.md) | 自研轻量能力描述 schema | Accepted |
 | [0011](0011-urdf-model-filament.md) | URDF 模型包 + Filament 渲染 | Accepted |
 | [0012](0012-generic-command-interfaces.md) | 通用命令接口（velocity/joint/cartesian/action） | Accepted |
+| [0013](0013-cross-platform-strategy.md) | 跨平台客户端策略（KMP + 平台原生适配，Web 受限） | Accepted |
 
 ## 新增 ADR 的格式
 

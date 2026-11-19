@@ -1,11 +1,12 @@
 # ADR-0006 Android 原生 Kotlin/Compose + MediaCodec/GLES
 
-- 状态：Accepted
+- 状态：Accepted（v1 范围；跨平台演进见 ADR-0013）
 - 日期：2026-11-18
 
 ## 背景
 
-需要低延迟硬件解码、多手柄、深度反投影点云渲染；仅 Android；团队可维护性。
+需要低延迟硬件解码、多手柄、深度反投影点云渲染；v1 仅 Android；团队可维护性。
+（后续跨平台目标见 ADR-0013：共享域迁 KMP，媒体/渲染/手柄保持平台原生。）
 
 ## 决定
 

@@ -134,6 +134,7 @@ interface ITransport {
 
 - 技术前提：**GStreamer 1.16+ 的 `webrtcbin` 支持 DataChannel**（基于 `sctp`/usrsctp 插件）；
   Android 可使用维护中的 `io.github.webrtc-sdk:android`（libwebrtc 的 BSD-3 构建）。
+- 用途：未来公网/跨网段；以及 **Web 客户端（Tier B）** 的备选传输（浏览器内建 WebRTC）。
 - 同样的逻辑流映射为：
   - 视频轨：RGB（H.264）；深度伪彩可作为第二视频轨（可选）；
   - DataChannel：control（unreliable/unordered）、telemetry、feedback、map（reliable）、config；
@@ -156,3 +157,17 @@ interface ITransport {
 - 告警阈值：丢包 > 5%、RTT > 50 ms、控制帧间隔 > 2×周期、视频卡顿 > 500 ms。
 - 断线重连：指数退避（0.5/1/2/4 s，上限 5 s），期间机器人侧看门狗独立生效。
 - 记录每次会话的统计快照，进入对抗验证报告。
+
+## 12. 跨平台传输注意（v1.x/v2）
+
+| 平台 | 传输选择 | 注意 |
+|---|---|---|
+| Android | UDP / WebRTC(可选) | 多播需 MulticastLock；权限清单见 06 文档 |
+| iOS | UDP（NWConnection）/ WebRTC | iOS 14+ 发送 UDP 单播/组播/广播需**本地网络权限**（Info.plist + 首次弹窗）；mDNS 需 Bonjour 声明；被拒绝时降级 QR/手动 IP 并引导设置 |
+| Windows/macOS/Linux | UDP / WebRTC | 防火墙首次放行；Vista/10+ 防火墙可能默认拦截入站 UDP；mDNS 用 JmDNS/Avahi |
+| Web（Tier B） | **WebTransport（HTTP/3）为主，WebRTC 备选** | 浏览器无裸 UDP；WebTransport 需 TLS 证书（局域网自签是最大坑）或走 WebRTC 的 DTLS 指纹；Gamepad API 在 Safari/iOS 受限，虚拟手柄兜底 |
+
+- 协议帧与加密布局完全一致；跨平台只替换 `ITransport` 实现。
+- Web 端能力声明 `client_caps` 不含 `udp`/`depth` 时，Agent 不推送原始深度；
+  安全逻辑（认证/看门狗/急停）不因传输或平台降级。
+- 详细设计与验收见 [17-cross-platform.md](17-cross-platform.md)。

@@ -23,3 +23,5 @@ protocol/
   与 [../docs/protocol-compat.md](../docs/protocol-compat.md)。
 - 示例 JSON 必须与文档字段一致；CI 校验 schema。
 - 测试向量用于 App/Agent 双方实现的差分测试，任何实现都必须通过。
+- **跨平台**：向量是语言无关真源，C++ Agent 与各客户端（Kotlin/JVM、iOS-Native、Wasm）必须
+  通过同一套向量（见 [../docs/17-cross-platform.md](../docs/17-cross-platform.md)）。

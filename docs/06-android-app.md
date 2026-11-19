@@ -1,6 +1,10 @@
-# 06 Android App 设计
+# 06 客户端设计（Android 首发，跨平台演进）
 
-> 仅 Android；Kotlin + Jetpack Compose；原生 MediaCodec/GLES 保证低延迟；手柄与深度/点云渲染是核心差异点。
+> v1 仅 Android；客户端分级与 iOS/桌面/Web 规划见 [17-cross-platform.md](17-cross-platform.md)。
+> 本文件同时定义平台适配层的接口边界：媒体解码、3D 渲染、手柄、传输、发现均为平台实现，
+> 协议/会话/能力/命令映射/模型状态等共享逻辑不依赖 Android API（KMP-ready）。
+>
+> 技术基线：Kotlin + Jetpack Compose；原生 MediaCodec/Filament 保证低延迟；手柄与深度/点云渲染是核心差异点。
 
 ## 1. 平台与依赖
 
@@ -36,6 +40,17 @@
 ```
 
 边界规则：`core:*` 不依赖 UI；`feature:*` 不直接操作 socket；媒体/渲染线程不阻塞 UI。
+
+### 2.1 跨平台边界（KMP-ready）
+
+- `core:protocol` 为纯 Kotlin/JVM：不引用 `android.*`、`androidx.*`，可在 JVM 单测与未来 KMP 目标编译。
+- `core:transport`、`core:media`、`core:render`、`core:gamepad` 中的**平台实现**通过接口暴露：
+  `ITransport`、`VideoDecoder`、`IRenderer`、`GamepadSource`、`CryptoProvider`、`Discovery`；
+  共享层只依赖接口。
+- 加解密：Android 用 `javax.crypto`（AES-GCM/HKDF 手写或 BouncyCastle），实现必须通过
+  `protocol/vectors/crypto.json`；后续 iOS/桌面/Wasm 用各自系统库实现同一接口。
+- 未来迁移路径：`core:protocol` → `shared/core-protocol`（KMP）→ Android/桌面/iOS 共用；
+  详见 [17-cross-platform.md](17-cross-platform.md)。
 
 ## 3. 页面与交互
 

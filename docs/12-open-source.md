@@ -29,6 +29,19 @@
 | OpenBot（参考） | MIT | 参考先例 | 不直接复制亦可 |
 | Foxglove Studio（参考） | MPL-2.0（最后开源版） | 仅作对照 | 文件级 copyleft；不修改源码即可 |
 
+### 2.1.1 跨平台客户端依赖（v1.x/v2，规划）
+
+| 项目 | 许可证 | 用途 | 边界 |
+|---|---|---|---|
+| Kotlin / Kotlin Multiplatform（含 Kotlin/Native、Kotlin/Wasm） | Apache-2.0 | 共享域（协议/会话/映射/模型状态） | 兼容 |
+| Compose Multiplatform / Compose Desktop | Apache-2.0 | Android/iOS/桌面共享 UI（Web 端按需） | 兼容 |
+| Filament（跨平台） | Apache-2.0 | Android/iOS/macOS/Windows/Linux 3D | 兼容 |
+| three.js（Web Tier B） | MIT | 浏览器 3D/点云/模型 | 兼容 |
+| msquic / quiche / ngtcp2（择一，Agent 侧 WebTransport） | MIT / BSD-2 / MIT | HTTP/3 服务器，供 Web 客户端连接 | 兼容；锁定版本与 SBOM |
+| SDL3（桌面手柄） | zlib | Windows/macOS/Linux 手柄与热插拔 | 兼容 |
+| JmDNS | Apache-2.0 | 桌面 mDNS | 兼容；Avahi（LGPL-2.1）仅动态链接可选 |
+| iOS/macOS 系统框架（VideoToolbox/Metal/GameController/Network） | Apple SDK 条款 | 平台能力 | 不属开源依赖；App Store 分发需遵守 Apple 条款 |
+
 ### 2.2 模型/URDF 工具链（新增）
 
 | 项目 | 许可证 | 用途 | 边界 |

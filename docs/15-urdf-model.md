@@ -128,7 +128,9 @@ URDF / xacro ──(xacro 展开)──▶ URDF
 
 ### 6.1 技术选型
 
-- 主选：**Filament（Apache-2.0）** 统一渲染：
+- 主选：**Filament（Apache-2.0）** 统一渲染（Android/iOS/macOS/Windows/Linux 原生支持）；
+  后续 iOS/桌面客户端复用同一 glb 资产与关节更新逻辑；Web（Tier B）用 three.js/WebGPU
+  加载同一模型包（可裁剪关节更新频率）。
   - `gltfio` 加载 `model.glb` 场景；节点名=link，关节节点=joint:<name>；
   - 每帧由 URDF 关节树 + 当前关节角计算各关节局部变换，更新 `TransformManager`；
   - 支持 PBR 材质、阴影可关、选中高亮、线框/坐标轴；
