@@ -29,7 +29,7 @@
 | 协议内核 | `liburc_protocol`（C++）+ Kotlin `core:protocol` | 帧/CRC/分片/加密/会话向量全绿 |
 | 发现与配对骨架 | ANNOUNCE + AUTH + 会话（mock 侧） | App 可发现/配对/连接 mock |
 | CTS 框架 | `conformance/` 静态组 + 动态组骨架 | 对 mock 跑通 P0 用例 ≥5 条 |
-| mock 服务端 | 全协议模拟 + `--drop/--delay/--stale-state` 注入 | 控制/遥测/测试图/看门狗可断言 |
+| mock 服务端 | 全协议模拟 + `--drop/--hold-next-ms/--corrupt-aead/--stale-state` 注入 | 控制/遥测/测试图/看门狗可断言 |
 | 最小参考 Agent 骨架 | `reference-agent/`（协议+假数据，无媒体） | 与 App 联调基础会话 |
 | App 骨架 | 连接/发现/控制/遥测算 UI（调试屏）+ 测试图直显 | 真机 Wi-Fi 全链路跑通 |
 | CI | lint / vectors / agent(x86+aarch64) / android | 四 job 全绿 |

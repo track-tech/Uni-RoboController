@@ -9,7 +9,7 @@
 应用层：CTRL / TELEM / FEEDBACK / VIDEO / DEPTH / MAP / CONFIG / LOG / EVENT
 消息层：32 字节统一帧头 + 载荷（分片时见第 6 节）
 安全层：AES-256-GCM（载荷加密，帧头为 AAD）+ 重放窗口
-传输层：UDP 各流独立端口（默认）；WebRTC 插件映射为 data channel/轨
+传输层：UDP 单端口多流（v1 默认，`stream` 字段区分，端口 47800）；WebRTC 插件映射为 data channel/轨
 发现层：UDP 47810 广播/组播 + mDNS + 二维码（独立报文格式）
 ```
 
@@ -23,7 +23,7 @@
 | 6 | 1 | `flags` | bit0 加密；bit1 关键帧/关键块；bit2 FEC 校验包；bit3 末片；bit4 需 ACK；bit5 重发；bit6-7 保留 |
 | 7 | 1 | `stream` | 流 ID（视频/深度/地图多流时区分） |
 | 8 | 4 | `session_id` | 会话 ID（握手分配） |
-| 12 | 4 | `seq` | 每流单调递增（u32，回绕处理见 §8） |
+| 12 | 4 | `seq` | **每方向全局单调递增**（u32，跨流共享；回绕处理见 §8） |
 | 16 | 8 | `ts_us` | 发送端单调时钟（µs），用于延迟/对齐 |
 | 24 | 2 | `payload_len` | 载荷长度（明文长度，≤1200） |
 | 26 | 2 | `reserved` | 置 0，接收方忽略 |
@@ -37,7 +37,8 @@
 - `crc32c` 采用 **CRC-32/ISCSI（Castagnoli）**：poly 正常值 `0x11EDC6F41`（反射实现用 `0x82F63B78`）、
   init=`0xFFFFFFFF`、refin/refout=true、xorout=`0xFFFFFFFF`；校验串 `"123456789"` 结果 `0xE3069283`。
   双端与 Python 参考实现必须用同一组测试向量对齐。
-- 加密帧的 AAD 为线上 32 B 帧头**原样**（crc 字段取实际传输值）；crc 计算时仍按本表把 crc 字段置 0。
+- 加密帧的 AAD 为 32 B 帧头**且 crc 字段置 0**（避免 crc 依赖密文、AAD 又依赖 crc 的循环定义）；
+  crc 不参与 GCM 认证，但由 CRC 校验保护。按“含实际 crc 的帧头”实现会导致解密失败，属于协议错误。
 - 所有多字节整数小端；浮点 IEEE-754 小端；字符串 UTF-8（长度前缀 u8/u16）。
 - 目标平台（x86_64/aarch64）均为小端，协议固定按小端编码；跨架构测试向量必须字节级一致（见 14 文档 X-01）。
 - 单包明文载荷 ≤ 1200 B；超长消息必须分片（见 §6）。
@@ -85,17 +86,23 @@ App                                   Agent
  │── AUTH(HMAC(secret, nonces+session)) ▶│
  │◀── AUTH_OK(role, key_confirm)        │
  │── SESSION_CTRL(claim) ──────────────▶│
- │◀── CAPS(zstd capability JSON) ───────│
+ │◀── CAPS(capability JSON) ────────────│
+ │── SESSION_CTRL(arm) ────────────────▶│
+ │◀── EVENT(armed) ────────────────────│
  │◀───────── TELEM 20Hz ────────────────│
  │───────── CTRL 100Hz ────────────────▶│
  │◀─────── FEEDBACK 50Hz ───────────────│   （视频/深度开始后）
 ```
 
+- **认证门（fail-closed）**：除 `HELLO`/`AUTH` 外，所有帧必须已加密 + `session_id` 匹配 + 来源地址为当前会话；
+  未认证的 `claim`/`CTRL`/`ESTOP`/`release_estop` 一律丢弃并计数，不得执行。
 - HELLO 前不允许发送任何控制消息；未认证的 CTRL 丢弃并计数。
-- `HELLO_ACK` 中的 `ports` 允许 Agent 使用非默认端口。
-- `caps_hash = SHA-256(capability_json)[0:4]`；App 收到 CAPS 后校验并缓存（按 robot_id + hash）。
+- `claim` 只授予控制权，**不等于 arm**；必须再发 `SESSION_CTRL(arm)` 才能接受 CTRL。
+- `HELLO_ACK` 中的 `ports` 允许 Agent 使用非默认端口；v1 实时流统一走 ctrl 端口。
+- `caps_hash = SHA-256(canonical_json)[0:4]`（canonical 见 §4.4）；App 收到 CAPS 后校验并缓存。
 - `AUTH` 失败返回 ERROR(code=0x0101)，连续 5 次失败锁定 30 s。
-- 会话超时：5 s 无任何有效包 → 断开；重连窗口 10 s。
+- 会话超时：5 s 无任何有效加密帧 → 断开；清理 claimed/armed/peer/密钥，**急停锁存保留**；
+  新会话需 `release_estop` + `arm` 才能恢复控制。重连窗口 10 s。
 
 ### 4.2 HELLO / HELLO_ACK 载荷
 
@@ -118,7 +125,9 @@ App                                   Agent
 
 - `caps_len u32, caps_crc32c u32, encoding u8, data`，分片传输（flags bit3 标记末片）；
   `encoding`：0=raw JSON，1=zstd；`caps_crc32c` 覆盖未压缩的 capability JSON。
+- CAPS 分片参数（v1 冻结）：通用分片头，`mtu=1190`（载荷上限）、`msg_id=0x1000`、末片 flags bit3。
 - `caps_hash = SHA-256(canonical_json)[0:4]`（小端 u32）；canonical JSON 为键排序、紧凑分隔符、UTF-8。
+- capability 中声明的 `streams`（分辨率/编码/帧率）必须与实际发送一致；不一致视为实现缺陷。
 - capability JSON schema 见 [08-robot-abstraction.md](08-robot-abstraction.md) 与 §5 节示例。
 - capability 中 `model` 字段声明 URDF 模型包：`bundle_hash`、下载 `url`、`joint_order`、
   `joint_order_hash`、`base_link`、`root_frame`、`dof`（详见 [15-urdf-model.md](15-urdf-model.md)）。
@@ -134,7 +143,7 @@ App                                   Agent
 | 0 | 1 | `mode` | 控制模式 ID（capability.control.modes[].id） |
 | 1 | 1 | `axis_count` | ≤16 |
 | 2 | 1 | `button_words` | 1 或 2（u32 字数） |
-| 3 | 1 | `flags` | bit0 死手；bit1 急停；bit2 模式切换；bit3 保留 |
+| 3 | 1 | `flags` | bit0 死手；bit1 保留（置 0，急停必须用 ESTOP）；bit2 模式切换；bit3 保留 |
 | 4 | 2×N | `axes[i16]` | 按 capability 的 `channels[]` 顺序 |
 | 4+2N | 4×W | `buttons[u32]` | 按 capability 的 `buttons[].bit` 位定义 |
 
@@ -142,7 +151,10 @@ App                                   Agent
 - 机器人侧对 `mode`、`axis_count`、范围做校验；越界拒绝并上报 ERROR/EVENT。
 - **死手**：`flags.bit0` 为 0 时所有运动通道视为 0（App 在手指离开/失焦/断连时置 0）。
 - **急停**：通过独立 ESTOP 消息（不依赖 CTRL），见 §7.1。
-- 轴单位：线性 m/s、角度 rad/s；整数缩放由 capability 的 `scale` 定义（如 i16 满量程 = 2.0）。
+- 轴单位：线性 m/s、角度 rad/s；整数缩放：优先用 capability 通道的 `scale`（i16 满量程对应 scale），
+  缺省时用 `max(|range[0]|, |range[1]|)`；越界一律拒绝，不做静默 clamp。
+- 只有 “已认证 + 已 claim + 已 arm + 未锁存急停 + TTL 有效” 的 CTRL 才算**有效控制帧**（刷新看门狗）；
+  deadman=0 的合法 CTRL 也刷新看门狗（命令为零）；越界/非法模式/TTL 丢弃/未 arm 不刷新。
 
 ### 5.1 L4W4 的通道映射示例
 
@@ -172,13 +184,17 @@ App                                   Agent
 
 - 载荷：`reason u8, ts_us u64`；flags bit4（需 ACK），重复发送 3 次、间隔 20 ms。
 - Agent 收到后：立刻锁存急停、置零控制、调用适配器 `safe_stop()`；回发 EVENT(estop_acked)。
-- 急停期间允许的唯一控制消息是 `ESTOP(reason=0)` + `SESSION_CTRL(release_estop)` 的显式复位流程
-  （App 需二次确认）；复位前 CTRL 一律忽略。
+- **复位是两步流程**：① `SESSION_CTRL(release_estop)` 仅清除锁存（不进入可运动状态）；
+  ② `SESSION_CTRL(arm)` 显式使能后，CTRL 才被接受。App 需二次确认。
+- `ESTOP(reason=0)` 不改变锁存状态（不得用于解锁）；复位前后 CTRL 一律忽略。
 - 视频/App 存活不影响急停：Agent 本地看门狗独立于网络。
 
 ### 7.2 视频（VIDEO）
 
-载荷 = 视频分片头（23 B）+ H.264/HEVC 字节：
+载荷 = 视频分片头（23 B）+ 编码字节：
+
+> v1 实时流统一走 ctrl 端口（见 02 文档）；`stream` 字段标记 VIDEO。CAPS 中声明的视频编码/分辨率/帧率
+> 必须与实际发送一致；M0 的 mock/参考服务端使用 RGB888 测试图（160×120@10），并在 capability 中如实声明。
 
 | 偏移 | 长度 | 字段 |
 |---|---|---|
@@ -313,8 +329,10 @@ message Telemetry {
 
 ## 8. 序号、时间与回绕
 
-- `seq` 每流独立，u32 回绕：接收端用“回绕窗口”比较（例如 RFC 1982 序列号比较）。
-- 控制帧过期判定：`now - ts_us > 200 ms` 丢弃（不执行迟到命令）。
+- `seq` **每方向全局单调**，u32 回绕：接收端按方向维护一个“回绕窗口”比较（RFC 1982）。
+  同一方向的所有流共享 seq，禁止“每流独立 seq”（否则 nonce=dir||seq 会在不同流复用）。
+- 控制帧 TTL：接收端以**本地接收时刻**记时；若排队/处理延迟超过 200 ms 则丢弃（不比较发送端时钟）；
+  发送端 `ts_us` 仅用于延迟统计/对齐。
 - 视频帧过期：`now - frame_ts_us > 150 ms` 丢弃（渲染最新帧）。
 - 录制/回放：保留原始 `ts_us` 与到达时间 `recv_ts_us`，便于离线对齐。
 

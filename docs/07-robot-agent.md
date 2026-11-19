@@ -28,7 +28,7 @@
 | 加密 | OpenSSL 3.x（AES-GCM/HKDF/HMAC） |
 | 压缩 | zstd（地图/深度/CAPS） |
 | 日志 | spdlog（JSON 行格式，轮转） |
-| 配置 | yaml-cpp |
+| 配置 | JSON（M0 mock/参考 Agent）；yaml-cpp（M1+ 生产配置可选） |
 | HTTP | cpp-httplib（MIT） |
 | 可选 | rclcpp（ROS 2 适配器）、rl_sar 补丁桥接 |
 
@@ -232,7 +232,8 @@ WantedBy=multi-user.target
 
 ## 13. 测试与故障注入钩子
 
-- 编译期 `URC_FAULT_INJECT`：注入丢包/延迟/状态断流/命令篡改/时钟偏移（仅测试构建）。
+- M0 mock/参考 Agent 的故障注入为**运行期 CLI 参数**（`--drop/--hold-next-ms/--corrupt-aead/--stale-state`）；
+  编译期 `URC_FAULT_INJECT` 仅用于生产 Agent 测试构建（M2+），不替代运行期开关。
 - `mock` 适配器 + `videotestsrc`/`fakesink` 可无硬件跑通全链路。
 - 单元测试：协议编解码、FEC、重组、仲裁、看门狗、地图量化、配置校验。
 - CI：x86 构建 + 单测；aarch64 交叉构建；容器内 `test-mode` 端到端。

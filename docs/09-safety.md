@@ -47,12 +47,13 @@
 ### 4.1 会话状态
 
 ```
-Idle → Discovered → Authenticating → Connected(Ready) → Armed(Control) → Safe(Estop/ Fault)
-                 ↘ AuthFailed                       ↘ Viewer(只读)
+Idle → Discovered → Authenticating → Connected(Ready) → Claimed → Armed(Control) → Safe(Estop/Fault)
+                 ↘ AuthFailed                              ↘ Viewer(只读)
 ```
 
-- `Connected` 后仍不能运动；需 `SESSION_CTRL(claim)` + `arm`（显式使能）。
-- `Safe` 状态下只接受 `release_estop` 流程；断开/超时回到 `Idle`。
+- `Connected` 后仍不能运动；`claim` 只授予控制权，**不自动 arm**；必须显式 `arm` 后才接受 CTRL。
+- `Safe` 状态下只接受 `release_estop`（仅清锁存）+ `arm`（重新使能）两步复位；断开/超时回到 `Idle`。
+- 会话超时清理 claimed/armed/peer/密钥；**急停锁存跨会话保留**，需新会话显式复位。
 - 第二控制者被拒绝或降级为 `Viewer`；控制权转移需先释放。
 
 ### 4.2 控制/机器人状态
@@ -84,13 +85,19 @@ Disarmed → Armed → Moving → SafeStop(damping/zero) → Disarmed
 - App 与 Agent 双重实现：App 在 `flags.deadman=0` 时清零通道；Agent 看到 `deadman=0` 直接零速；
 - 死手按键可配置；高风险形态（机械臂/无人机）强制开启。
 
+**有效控制帧（刷新看门狗的唯一条件）**：已认证 + 已 claim + 已 arm + 未锁存急停 + TTL 有效 + 模式/轴数/范围合法。
+deadman=0 的合法 CTRL 也刷新看门狗（输出零速）；越界、非法模式、TTL 丢弃、未 arm、未认证均不刷新。
+看门狗触发后必须 `SESSION_CTRL(arm)` 重新使能，任何 CTRL 不得自动恢复 armed。
+
 ## 6. 急停（E-stop）
 
 ### 6.1 语义
 
 - **立即**（≤300 ms）进入阻尼/零输出；锁存；禁止所有运动命令与模式切换；
-- 只有显式复位流程（App 二次确认 + Agent 复位）才能退出；复位后需重新 Arm；
-- 急停通道独立于视频/地图；`ESTOP` 消息可靠发送并重复，直到确认。
+- **复位两步**：① `release_estop` 只清锁存；② `arm` 重新使能；复位后仍保持零输出直到收到有效 CTRL；
+  `ESTOP(reason=0)` 不得清除锁存；App 需二次确认；
+- 急停通道独立于视频/地图；`ESTOP` 消息可靠发送并重复，直到确认；
+- 认证门：未认证/未加密的 ESTOP/CTRL/claim 一律无效；会话超时不解除锁存。
 
 ### 6.2 各层实现
 

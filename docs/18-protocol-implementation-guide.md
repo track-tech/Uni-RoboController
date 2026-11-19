@@ -52,11 +52,16 @@ Level 4 增强档：深度/点云/地图/关节命令（按需，1–4 周）
 
 ### 4.1 协议与安全
 
-- 帧头 32 B、小端、CRC-32/ISCSI（`0xE3069283` 校验串）；加密帧的 AAD 是线上帧头**原样**。
-- HKDF 方向子密钥 + 12 B nonce（`dir+3B0+seq`）；重放窗口 2048；控制/遥测/地图必须加密。
-- 会话超时 5 s；认证失败 5 次锁 30 s；单控制者；观察者只读。
-- 控制帧 TTL 200 ms：过期丢弃；100 Hz 消费；重复帧去重；死手位为 0 时通道清零。
-- **看门狗 300 ms → 零速**；**E-stop 锁存**，显式复位；**仲裁优先级：硬件急停 > RC > 网络 > 自主**。
+- 帧头 32 B、小端、CRC-32/ISCSI（`0xE3069283` 校验串）；加密帧的 AAD 是**帧头且 crc 字段置 0**
+  （不是含实际 crc 的帧头；按后者实现会解密失败）。
+- HKDF 方向子密钥 + 12 B nonce（`dir+3B0+seq`）；**seq 每方向全局、跨流共享**；重放窗口每方向 2048；
+  控制/遥测/地图必须加密。
+- 认证门 fail-closed：除 HELLO/AUTH 外，所有帧必须已加密 + session 匹配 + 来源会话一致；
+  未认证的 claim/CTRL/ESTOP/release 一律丢弃并计数。
+- 会话超时 5 s；认证失败 5 次锁 30 s；单控制者；观察者只读；claim 不等于 arm，必须显式 arm。
+- 控制帧 TTL 200 ms（接收侧排队时间）：过期丢弃；100 Hz 消费；重复帧去重；死手位为 0 时通道清零。
+- **看门狗 300 ms → 零速**；**E-stop 锁存**；复位两步：`release_estop` 只清锁存，`arm` 重新使能；
+  `ESTOP(reason=0)` 不清锁存；**仲裁优先级：硬件急停 > RC > 网络 > 自主**。
 - 能力协商：`CAPS` 哈希、`client_caps` 降级、`joint_order_hash` 校验；不一致时拒绝运动渲染/关节命令。
 
 ### 4.2 视频
@@ -137,29 +142,43 @@ Level 4 增强档：深度/点云/地图/关节命令（按需，1–4 周）
 # 静态组（CI 每次）
 pytest conformance -m static --report cts-report.json
 
-# 动态组（对 mock 或真实服务端）
-pytest conformance -m dynamic --target 192.168.1.20:47800 --secret-file /tmp/urc.secret
-# 对官方 mock
-pytest conformance -m dynamic --target 127.0.0.1:47800 --secret-file /tmp/urc.secret
+# 动态组 A：CTS 自行启动 Python 参考服务端（默认）
+python -m pytest conformance -m dynamic -q
+
+# 动态组 B：CTS 自行启动 C++ mock（每个用例独立进程，支持注入参数）
+URC_CTS_MOCK_BIN=agent/build/mock_robot \
+URC_CTS_REQUIRE_EXTERNAL=1 \
+python -m pytest conformance -m dynamic -q
+
+# 动态组 C：连接已运行的外部 target（第三方实现；破坏性用例自动排除）
+URC_CTS_TARGET=192.168.1.20:47800 \
+URC_CTS_SECRET_FILE=/tmp/urc.secret \
+URC_CTS_REQUIRE_EXTERNAL=1 \
+python -m pytest conformance -m dynamic -q
 ```
 
-- `--target` 支持 `host:port` 与 `--discover`（走 mDNS/广播发现后连接）。
+- `URC_CTS_REQUIRE_EXTERNAL=1`：缺少 target/mock 直接失败，不允许静默回退 Python ref。
+- `URC_CTS_MOCK_BIN` 模式按用例启动/停止 mock；注入用例通过 fixture 附加 `--hold-next-ms`/`--corrupt-aead` 等参数。
+- CI 必须断言 **skipped=0**；报告 JSON 由 pytest hook 生成并作为 artifact。
 - 安全组默认只读/短时；涉及运动的用例必须显式 `--allow-motion`（对 mock/台架），防误伤实机。
 
 ### 6.4 通过标准
 
-- P0 全绿：发现、配对、会话、控制 TTL、看门狗、急停、重放拒绝、跨架构向量。
-- P1 全绿：遥测、视频、模型状态、故障注入冒烟。
+- **P0 全绿**（§6.2 全部 P0 项）：发现、未认证拒绝、配对/锁定、会话超时、单控制者、控制 TTL/越界、
+  看门狗（含需重新 arm）、急停（含两步复位）、重放/篡改拒绝、跨架构向量。
+- P1 全绿：遥测、视频、模型状态、故障注入冒烟；skipped=0；报告归档。
 - P2 按增强档声明逐项通过。
 - 任何 P0 失败禁止接实机；报告随 Release 归档。
+- 项目自带的 mock/参考 Agent **必须**通过同一 P0 矩阵；否则视为参考实现不合格。
 
 ## 7. 服务端接入 Checklist
 
 ```
 [ ] 实现 Level 0–3 并按 §2 清单自测
 [ ] capability JSON 通过 Schema；能力声明与实际一致
-[ ] 跑 CTS static + dynamic（mock 与真实各一次）
-[ ] 实机前：安全组（看门狗/急停/断链/重放）全绿
+[ ] 跑 CTS static + dynamic（mock 与真实各一次）；P0 全绿、skipped=0
+[ ] 实机前：安全组（认证门/看门狗/急停两步复位/断链/重放）全绿
+[ ] 声明与实发一致：CAPS 的 streams（编码/分辨率/帧率）与实际视频帧一致
 [ ] 视频：720p30/1080p30 实测延迟/码率/关键帧恢复
 [ ] 模型：URDF 包 hash/joint_order 校验；MODEL_STATE 与模型一致
 [ ] 文档：填写实现说明（端口/加密/降级/已知限制）并在项目登记

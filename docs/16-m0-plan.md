@@ -34,7 +34,7 @@
 |---|---|---|
 | D1 | mock 与最小参考 Agent 共用 `liburc_protocol` + 同一配置格式 | 一套协议实现两用，避免漂移 |
 | D2 | Python `tools/codec_ref` 为测试向量唯一真源 | C++/Kotlin 差分对齐 |
-| D3 | M0 视频走 RGB888 测试图（320×240@10，VIDEO 通道分片） | 不引入 GStreamer/MediaCodec 依赖 |
+| D3 | M0 视频走 RGB888 测试图（160×120@10，VIDEO 通道分片；capability 如实声明 rgb888） | 不引入 GStreamer/MediaCodec 依赖 |
 | D4 | TELEM 从 M0 起用 protobuf | 避免中途换格式导致向量作废 |
 | D5 | 加密第 1 天实现（OpenSSL 3 / javax.crypto），默认开启，`--no-encrypt` 仅调试 | 认证/重放是安全地基 |
 | D6 | 配对秘密 M0 用控制台 `URCPAIR:<base64>`，M1 加二维码 | 不背相机权限依赖 |
@@ -97,10 +97,10 @@ Uni-RoboController/
 ### 4.1 mock_robot（全协议模拟，用于 App/CTS 开发）
 
 ```
-mock_robot --bind 0.0.0.0 --ctrl-port 47800 --http-port 47880 \
+mock_robot --bind 0.0.0.0 --ctrl-port 47800 --discovery-port 47810 \
   --capability protocol/examples/capability.mock_quadruped.json \
-  --secret-file /tmp/urc.secret [--no-encrypt] [--no-camera] \
-  [--drop pct] [--delay ms] [--stale-state] [--corrupt crc|payload]
+  --secret-file /tmp/urc.secret [--no-camera] \
+  [--drop pct] [--hold-next-ms ms] [--corrupt-aead pct] [--stale-state] [--stats-file path]
 ```
 
 - 广播 `ANNOUNCE`；AUTH 5 次失败锁 30 s；单控制者；CTRL TTL 200 ms；看门狗 300 ms；
@@ -176,42 +176,42 @@ urc-reference-agent --config /etc/urc/agent.yaml [--no-camera]
 python tools/codec_ref/gen_vectors.py --check
 python tools/codec_ref/check_caps.py
 python tools/check_kmp_ready.py
-pytest conformance -m static --report artifacts/cts-static.json
+python -m pytest conformance -m static -q      # 报告写入 artifacts/cts-*.json
 
 # 1) 三端向量
-cmake -S agent -B agent/build && cmake --build agent/build -j
+cmake -S agent -B agent/build -DURC_BUILD_APPS=ON && cmake --build agent/build -j
 ctest --test-dir agent/build --output-on-failure
-cmake -S agent -B agent/build-arm64 -DCMAKE_TOOLCHAIN_FILE=toolchains/aarch64-linux-gnu.cmake
+cmake -S agent -B agent/build-arm64 -DCMAKE_TOOLCHAIN_FILE=toolchains/aarch64-linux-gnu.cmake -DURC_BUILD_APPS=ON
 cmake --build agent/build-arm64 -j
 qemu-aarch64 -L /usr/aarch64-linux-gnu ./agent/build-arm64/tests/urc_vectors
 ./gradlew :core:protocol:test
 python tools/codec_ref/difftest.py --all
 
 # 2) 端到端（同一 Wi-Fi，真机）
-./agent/build/mock_robot --secret-file /tmp/urc.secret \
+./agent/build/mock_robot --secret-file /tmp/urc.secret --discovery-port 47810 \
   --capability protocol/examples/capability.mock_quadruped.json
 # 控制台打印 URCPAIR:<base64>；App 调试骨架：
 # [ ] 自动发现列表出现 mock（广播）
 # [ ] 配对成功；错误秘密 ×5 → 锁定 30 s
 # [ ] 摇杆 CTRL 100 Hz；TELEM 回显；间隔 P99 ≤20 ms
 # [ ] 杀 App → 300 ms 内 watchdog_fired 零速；重连需重新 arm
-# [ ] ESTOP 锁存 + ack；复位流程
+# [ ] ESTOP 锁存 + ack；release_estop 后需再 arm 才能运动
 # [ ] 测试图 ≥5 fps；中片丢失整帧跳过
 # [ ] MODEL_STATE 30 Hz；joint_order_hash 匹配
 # [ ] --stale-state → 状态过期告警
 
-# 3) CTS 动态组（对 mock）
-pytest conformance -m dynamic --target 127.0.0.1:47800 --secret-file /tmp/urc.secret \
-  --report artifacts/cts-mock.json
-# [ ] P0 组全绿（≥8 条）；报告归档
+# 3) CTS 动态组（P0 矩阵，skipped=0）
+URC_CTS_MOCK_BIN=agent/build/mock_robot URC_CTS_REQUIRE_EXTERNAL=1 \
+  python -m pytest conformance -m dynamic -q
+# [ ] 18 §6.2 全部 P0 用例全绿；报告归档
 
 # 4) 参考 Agent
-./agent/build/urc-reference-agent --config reference/agent.yaml --no-camera
+./agent/build/urc-reference-agent --config reference/agent.json --no-camera
 # [ ] App 可发现/配对/控制/看 TELEM；按 Ctrl+C 安全退出
 
 # 5) 故障注入冒烟
-./agent/build/mock_robot ... --drop 30 --delay 100 --corrupt payload
-# [ ] 控制降级不误触发急停；重放 100% 拒绝；30 min 无泄漏
+./agent/build/mock_robot ... --drop 30 --hold-next-ms 250 --corrupt-aead 10 --seed 1
+# [ ] 控制降级不误触发急停；重放/TTL/坏 AEAD 计数正确；30 min 无泄漏
 ```
 
 ## 10. 风险与缓解
