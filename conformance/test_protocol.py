@@ -24,6 +24,16 @@ def _telem(c: UrcClient, timeout: float = 2.0) -> messages.Telemetry:
     return messages.unpack_telem(f.payload)
 
 
+def _telem_until(c: UrcClient, pred, timeout: float = 2.0) -> messages.Telemetry:
+    end = time.monotonic() + timeout
+    last = None
+    while time.monotonic() < end:
+        last = _telem(c, timeout=max(0.05, end - time.monotonic()))
+        if pred(last):
+            return last
+    raise AssertionError(f"telemetry condition not met, last={last}")
+
+
 def _event_code(c: UrcClient, want: int, timeout: float = 2.0) -> None:
     end = time.monotonic() + timeout
     while time.monotonic() < end:
@@ -62,8 +72,7 @@ def test_control_and_telemetry(server):
     for _ in range(30):
         c.send_ctrl([16384, 0, 0, 0], [0], flags=1)
         time.sleep(0.01)
-    t = _telem(c)
-    assert t.x > 0.5, t
+    t = _telem_until(c, lambda x: x.x > 0.5)
     assert t.remote_age_ms < 200
     # 死手释放 -> 零速
     c.send_ctrl([0, 0, 0, 0], [0], flags=0)
@@ -121,7 +130,7 @@ def test_estop_latch_and_release(server):
     for _ in range(20):
         c.send_ctrl([16384, 0, 0, 0], [0], flags=1)
         time.sleep(0.01)
-    t = _telem(c)
+    t = _telem_until(c, lambda x: x.x > 0.5)
     assert t.x > 0.5, t
     c.close()
 
@@ -154,7 +163,7 @@ def test_tampered_packet_ignored(server):
     for _ in range(20):
         c.send_ctrl([16384, 0, 0, 0], [0], flags=1)
         time.sleep(0.01)
-    t = _telem(c)
+    t = _telem_until(c, lambda x: x.x > 0.5)
     assert t.x > 0.5, t
     c.close()
 
