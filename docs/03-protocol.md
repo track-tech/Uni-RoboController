@@ -135,7 +135,7 @@ App                                   Agent
   `ports` 允许 Agent 使用非默认端口。
 - `caps_hash = SHA-256(canonical_json)[0:4]`（canonical 见 §4.4）；App 收到 CAPS 后校验并缓存。
 - `AUTH` 失败返回 ERROR(code=0x0101)，per-来源连续 5 次失败锁定 30 s；锁定只影响该来源。
-- 会话超时：5 s 无“成功解密 + CRC 通过 + session 匹配”的帧 → 会话失效；清理 claimed/armed/peer/方向密钥；
+- 会话超时：5 s 无“成功解密 + CRC 通过 + session 匹配”的帧 → **先发 EVENT 0x0004**，再清理 claimed/armed/peer/方向密钥；
   **不保留重连密钥**（必须新 HELLO+AUTH）；**急停锁存保留**；新会话需 `release_estop` + `arm` 才能恢复控制。
 
 ### 4.2 HELLO / HELLO_ACK 载荷
@@ -160,6 +160,7 @@ App                                   Agent
 - `caps_len u32, caps_crc32c u32, encoding u8, data`，分片传输（flags bit3 标记末片）；
   `encoding`：0=raw JSON，1=zstd；`caps_crc32c` 覆盖未压缩的 capability JSON。
 - CAPS 分片参数（v1 冻结）：通用分片头，`mtu=1190`（载荷上限）、`msg_id=0x1000`、末片 flags bit3。
+  IPv6 链路部署时 `mtu` 必须降到 1184（见 02 §2 的 datagram 预算）。
 - `caps_hash = SHA-256(canonical_json)[0:4]`（小端 u32）；canonical JSON 为键排序、紧凑分隔符、UTF-8。
 - capability 中声明的 `streams`（分辨率/编码/帧率）必须与实际发送一致；不一致视为实现缺陷。
 - capability JSON schema 见 [08-robot-abstraction.md](08-robot-abstraction.md) 与 §5 节示例。
@@ -376,7 +377,7 @@ message Telemetry {
 |---|---|---|
 | 0x0101 | 认证失败 | 拒绝并限速 |
 | 0x0102 | 会话不存在/过期 | 断开重连 |
-| 0x0103 | 角色冲突（已有控制者） | 降级只读或拒绝 |
+| 0x0103 | 角色冲突（已有控制者）或未 claim 就 arm | 降级只读/拒绝；先 claim |
 | 0x0201 | 协议版本不兼容 | 提示升级 |
 | 0x0202 | 能力哈希不匹配 | 重新拉取 CAPS |
 | 0x0301 | 控制越界/非法模式 | 拒绝并计数 |

@@ -21,9 +21,9 @@
       "required": ["ctrl_port"],
       "properties": {
         "ctrl_port": {"type": "integer", "minimum": 1, "maximum": 65535},
-        "video_port": {"type": "integer", "minimum": 1, "maximum": 65535},
-        "depth_port": {"type": "integer", "minimum": 1, "maximum": 65535},
-        "map_port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "video_port": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "depth_port": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "map_port": {"type": "integer", "minimum": 0, "maximum": 65535},
         "web_port": {"type": "integer", "minimum": 1, "maximum": 65535}
       },
       "additionalProperties": true

@@ -32,7 +32,7 @@
 | mock 服务端 | 全协议模拟 + `--drop/--hold-next-ms/--corrupt-aead/--stale-state` 注入 | 控制/遥测/测试图/看门狗可断言 |
 | 最小参考 Agent 骨架 | `reference-agent/`（协议+假数据，无媒体） | 与 App 联调基础会话 |
 | App 骨架 | 连接/发现/控制/遥测算 UI（调试屏）+ 测试图直显 | 真机 Wi-Fi 全链路跑通 |
-| CI | lint / vectors / cts / mock-integration / asan / aarch64（M0）；Android 在 M1 加入 | 四 job 全绿 |
+| CI | lint / vectors / cts / mock-integration / asan / aarch64（M0）；Android 在 M1 加入 | M0 CI 全绿 |
 
 > M0 详细任务、排期与 Runbook 见 [16-m0-plan.md](16-m0-plan.md)。
 

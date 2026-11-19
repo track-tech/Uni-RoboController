@@ -28,7 +28,7 @@
                                      // manipulator | mobile_manipulator | drone | custom
   "vendor": "zhinao", "model": "l4w4",
   "frames": {"odom": "odom", "map": "map", "base": "base_link"},
-  "transport": {"ctrl_port": 47800, "video_port": 47801, "depth_port": 47802, "map_port": 47803},
+  "transport": {"ctrl_port": 47800, "video_port": 0, "depth_port": 0, "map_port": 0},  // v1 单端口多流，0=复用 ctrl
   "rates": {"control_hz": 100, "servo_hz": 200, "policy_hz": 50, "telemetry_hz": 20},
   "control": {
     "modes": [

@@ -130,13 +130,13 @@ Level 4 增强档：深度/点云/地图/关节命令（按需，1–4 周）
 | CTS-P-01 | P0 | 配对 | 错误秘密 ×5 | 锁定 30 s；锁定期正确 AUTH 仍 0x0602；仅该来源锁定 |
 | CTS-P-02 | P0 | 配对 | 未认证 claim/CTRL/ESTOP/release_estop/arm | 全部无效果、无 armed/estop 事件、`gate_drop` 增加 |
 | CTS-S-01 | P0 | 会话 | 第二控制者 claim | 0x0103；原会话不受影响 |
-| CTS-S-02 | P0 | 会话 | 5 s 无有效帧 | 会话失效；清密钥；新 HELLO；锁存保留 |
+| CTS-S-02 | P0 | 会话 | 5 s 无有效帧 | 会话失效；EVENT 0x0004；清密钥；新 HELLO；锁存保留 |
 | CTS-C-01 | P0 | 控制 | claim 后未 arm 的 CTRL；arm 后 100 Hz | 未 arm 不生效；arm 后回显一致 |
 | CTS-C-02 | P0 | 控制 | TTL 过期帧 | 丢弃；不执行；`ttl_dropped` 计数 |
 | CTS-C-03 | P0 | 控制 | 越界 axes/未知 mode | 拒绝 + 计数；不 clamp 放行 |
 | CTS-S-03 | P0 | 安全 | 断链 300 ms | 零速；≤400 ms 停；CTRL 不自动 arm，action3 后恢复 |
 | CTS-S-04 | P0 | 安全 | ESTOP | 锁存；estop_acked；ESTOP(0) 不解锁；release_estop 后仍需 arm |
-| CTS-S-05 | P0 | 安全 | 重放/篡改控制包 | 100% 拒绝并计数（replay_drop/aead_fail 分项） |
+| CTS-S-05 | P0 | 安全 | 重放/篡改控制包 | 100% 拒绝并计数；跨流 seq 复用（CTRL↔FEEDBACK）必须 replay_drop；Agent→App TELEM/VIDEO seq 全局递增 |
 | CTS-K-01 | P0 | 跨架构 | x86_64/aarch64 向量 | 字节级一致；suite=arch 报告 |
 
 > 级别：P0 = 发布/接实机门槛；P1 = 基础档完整；P2 = 增强档。

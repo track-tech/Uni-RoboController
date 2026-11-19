@@ -52,9 +52,9 @@
   },
   "transport": {
     "ctrl_port": 47800,
-    "video_port": 47801,
-    "depth_port": 47802,
-    "map_port": 47803,
+    "video_port": 0,
+    "depth_port": 0,
+    "map_port": 0,
     "web_port": 47880
   },
   "rates": {

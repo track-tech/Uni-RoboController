@@ -40,6 +40,8 @@
 
 ### 2.1 新增/修改（实现阶段）
 
+> 完整交付清单以 §12.9 为准；本节为概览，已包含 S1 新增的 soak/check_cts_report/client/replay.json 等。
+
 ```
 agent/
 ├── CMakeLists.txt                 # urc_server 库、mock_robot、测试、URC_BUILD_APPS
@@ -301,10 +303,12 @@ python tools/soak.py --bin agent/build/mock_robot --duration 1800 --drop 5 --rat
 ## 12.1 消息契约补全（关闭 R2-P0-1）
 
 - `docs/03-protocol.md` 已新增 §3.1 枚举/流 ID 与 §3.2 逐消息载荷（SESSION_CTRL/EVENT/ERROR/PING/PONG/FEEDBACK）；
-- 新增 `protocol/proto/telemetry.proto`（TELEM 字段号/类型冻结）；
-- C++ `messages.h/.cpp` 补齐：SESSION_CTRL、ESTOP、EVENT、ERROR、VIDEO、PONG、FEEDBACK 的 pack/unpack；
-- `protocol/vectors/session.json` 增加上述消息的固定字节样例（5 个 SESSION_CTRL 动作、3 个 EVENT、ERROR、PING/PONG、FEEDBACK）；
-- CTS 增加**独立硬编码期望字节**的契约测试（不通过 urc_ref 解码生成期望），防止“同库假绿”；
+- `protocol/proto/telemetry.proto` 已新增（TELEM 字段号/类型冻结）；
+- **S1 实现交付（Gate 后生成，当前未提交）**：
+  - C++ `messages.h/.cpp` 补齐 SESSION_CTRL、ESTOP、EVENT、ERROR、VIDEO、PONG、FEEDBACK 的 pack/unpack；
+  - `protocol/vectors/session.json` 增加上述消息的固定字节样例（5 个 SESSION_CTRL 动作、3 个 EVENT、ERROR、PING/PONG、FEEDBACK）；
+  - `protocol/vectors/replay.json` 承载帧级跨流/回绕/重复负例；
+  - CTS 增加**独立硬编码期望字节**的契约测试（不通过 urc_ref 解码生成期望），防止“同库假绿”；
 - capability `streams[].id` 是逻辑编号，帧头 `stream` 固定 VIDEO=2/DEPTH=3/MAP=4（03 §3.1）。
 
 ## 12.2 明文例外与 AUTH（关闭 R2-P0-2）
@@ -366,7 +370,6 @@ AUTH 规则：
 ## 12.7 跨流 seq/重放（关闭 R2-P0-3）
 
 - `crypto.json` 增加：同 seq 不同 stream 的 nonce 相同（证明必须全局 seq）、u32 回绕窗口、重复/旧包；
-- `session.json` 增加跨流重复 seq 的负例；
 - CTS 增加（可证伪）：
   - App→Agent 方向：CTRL(stream=0) 用 seq=X 后，FEEDBACK(stream=6) 复用 seq=X → 必须 `replay_drop++` 且 FEEDBACK 不处理；
   - Agent→App 方向：连接后收集 TELEM(stream=1) 与 VIDEO(stream=2) ≥20 帧，断言 seq 严格递增且 `replay_drop=0`；
@@ -381,7 +384,8 @@ AUTH 规则：
   - `mock-integration`：安装 cmake/g++/libssl-dev；`cmake -DURC_BUILD_APPS=ON -DURC_WERROR=ON`；随机端口启动；`URC_CTS_MOCK_BIN` 跑动态组；`timeout-minutes: 15`；`if: always()` 上传日志/`cts-report.json`；
   - `mock-asan`：`-fsanitize=address,undefined` + `-fno-omit-frame-pointer`；ctest + **CTS 用 ASAN mock 跑动态组**（`ASAN_OPTIONS=detect_leaks=1:abort_on_error=1`、`UBSAN_OPTIONS=halt_on_error=1`）；安装 cmake/g++/libssl-dev；`timeout-minutes: 25`；失败 `if: always()` 上传 build/log/cts-report；
   - `mock-soak`：仅 `workflow_dispatch` 或 main 提交含 `[soak]`；`timeout-minutes: 45`；30 min；解析 stats/RSS/fd；失败上传；
-  - `agent-aarch64`：`-DURC_BUILD_APPS=ON`；QEMU `mock_robot --help`；
+  - `agent-aarch64`：`-DURC_BUILD_APPS=ON`；QEMU `mock_robot --help`；生成 `arch-report.json`（K-01）并上传 artifact；
+  - `tools/check_cts_report.py` 作为独立 step 校验 dynamic+arch 并集=P0 12 ID、全 passed、skipped/xfail=0；
   - `android-build` 不在 M0 gate（S4 加入）。
 - `URC_WERROR` 选项只对项目源启用；nlohmann 以 SYSTEM include；
 - CMake `if(UNIX)` 守卫 apps/net；非 UNIX 明确报错；Windows 用 Python ref（文档 07/17/16 已注明）；

@@ -39,7 +39,7 @@
 | D5 | 加密第 1 天实现（OpenSSL 3 / javax.crypto），默认开启；不提供生产关闭开关（仅隔离测试构建可调试） | 认证/重放是安全地基 |
 | D6 | 配对秘密 M0 用控制台 `URCPAIR:<base64>`，M1 加二维码 | 不背相机权限依赖 |
 | D7 | 发现 M0 实现 **UDP 广播 DISCOVER/ANNOUNCE**；App 自动列表 | 自动发现是 v1 核心体验，M0 先打通 |
-| D8 | aarch64 交叉构建 + QEMU 向量测试在 M0 进入 CI | 机器人端 x86_64/ARM64 双目标（07 文档 §10） |
+| D8 | aarch64 **QEMU 容器**构建 + 协议向量在 M0 进入 CI | 机器人端 x86_64/ARM64 双目标（07 文档 §10）；交叉工具链留 M2 |
 | D9 | CRC32C 用 CRC-32/ISCSI；加密布局按 02/03 文档冻结 | 向量据此生成 |
 | D10 | `core:protocol` 保持 KMP-ready（禁止 `android.*`） | v1.x 跨平台迁移零返工 |
 | D11 | **CTS 是 M0 交付物**（静态组 + 基础动态组），不是 M1 才做 | 协议必须有可执行验收 |
@@ -225,7 +225,7 @@ URC_CTS_MOCK_BIN=agent/build/mock_robot URC_CTS_REQUIRE_EXTERNAL=1 \
 | CTS 过早复杂化拖慢 M0 | M0 只做静态组 + 5–8 条 P0 动态；完整组随 M1 |
 | protobuf 版本漂移 | 锁 proto；两端 pin 大版本；向量含编码字节 |
 | Windows 开发机差异 | `.gitattributes`；C++ mock 仅 POSIX（Windows 用 Python ref server）；需要本地跑 C++ 用 WSL/容器 |
-| aarch64 工具链配置困难 | M0 只交叉协议内核（无 GStreamer）；容器预装；QEMU 跑向量 |
+| aarch64 工具链配置困难 | M0 用 QEMU arm64 容器构建协议内核（无 GStreamer）；交叉工具链留 M2 |
 | App 与 mock 时间线错位 | 协议内核先冻结；mock 优先于参考 Agent |
 | 范围回摆到“全栈” | ADR-0014 + 本文 §1.2 不做清单；评审会对照 |
 | 单人执行 | 序贯 M0≈6 周；先砍 T5.2 参考 Agent 与 T6.2 调试 UI（用 CLI 客户端验证） |
