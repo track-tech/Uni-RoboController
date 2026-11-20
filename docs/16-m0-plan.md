@@ -184,14 +184,14 @@ python -m pytest conformance -m static -q      # 报告写入 artifacts/cts-*.js
 # 1) 三端向量
 cmake -S agent -B agent/build -DURC_BUILD_APPS=ON && cmake --build agent/build -j
 ctest --test-dir agent/build --output-on-failure
-cmake -S agent -B agent/build-arm64 -DCMAKE_TOOLCHAIN_FILE=toolchains/aarch64-linux-gnu.cmake -DURC_BUILD_APPS=ON
+cmake -S agent -B agent/build-arm64 -DURC_BUILD_APPS=ON   # CI 用 QEMU arm64 容器
 cmake --build agent/build-arm64 -j
-qemu-aarch64 -L /usr/aarch64-linux-gnu ./agent/build-arm64/tests/urc_vectors
+ctest --test-dir agent/build-arm64 --output-on-failure
 ./gradlew :core:protocol:test
 python tools/codec_ref/difftest.py --all
 
-# 2) 端到端（同一 Wi-Fi，真机）
-./agent/build/mock_robot --secret-file /tmp/urc.secret --discovery-port 47810 \
+# 2) 端到端（mock；同一 Wi-Fi 真机时把 --bind 改 0.0.0.0）
+./agent/build/mock_robot --bind 0.0.0.0 --secret-file /tmp/urc.secret --discovery-port 47810 \
   --capability protocol/examples/capability.mock_quadruped.json
 # 控制台打印 URCPAIR:<base64>；App 调试骨架：
 # [ ] 自动发现列表出现 mock（广播）
@@ -205,16 +205,20 @@ python tools/codec_ref/difftest.py --all
 
 # 3) CTS 动态组（P0 矩阵，skipped=0）
 URC_CTS_MOCK_BIN=agent/build/mock_robot URC_CTS_REQUIRE_EXTERNAL=1 \
+URC_CTS_REPORT=conformance/cts-mock-report.json \
   python -m pytest conformance -m dynamic -q
+python tools/check_cts_report.py --suite dynamic --dynamic conformance/cts-mock-report.json
 # [ ] 18 §6.2 全部 P0 用例全绿；报告归档
 
 # 4) 参考 Agent
 ./agent/build/urc-reference-agent --config reference/agent.json --no-camera
 # [ ] App 可发现/配对/控制/看 TELEM；按 Ctrl+C 安全退出
 
-# 5) 故障注入冒烟
+# 5) 故障注入 / 浸泡
 ./agent/build/mock_robot ... --drop 30 --hold-next-ms 250 --corrupt-aead 10 --seed 1
-# [ ] 控制降级不误触发急停；重放/TTL/坏 AEAD 计数正确；30 min 无泄漏
+python tools/soak.py --bin agent/build/mock_robot --duration 1800 --rate 100 --drop 5 \
+  --seed 1 --report artifacts/soak-report.json
+# [ ] 控制降级不误触发急停；重放/TTL/坏 AEAD 计数正确；30 min 无 RSS/fd 泄漏；SIGTERM 退出码 0
 ```
 
 ## 10. 风险与缓解

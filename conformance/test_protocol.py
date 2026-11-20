@@ -401,3 +401,14 @@ def test_video_rgb888(video_server):
     assert len(data) == 160 * 120 * 3
     assert meta["frame_bytes"] == len(data)
     client.close()
+
+
+def test_stale_state_injection(make_server):
+    server = make_server(["--stale-state"])
+    client = _client(server)
+    client.connect()
+    end = time.monotonic() + 0.8
+    while time.monotonic() < end:
+        f = client.recv(timeout=end - time.monotonic())
+        assert not (f and f.type == frame.T_MODEL_STATE), "stale-state should not send MODEL_STATE"
+    client.close()

@@ -65,3 +65,17 @@ CI 运行记录：<https://github.com/track-tech/Uni-RoboController/actions/work
 4. 最小参考 Agent 骨架（`agent/apps/urc-reference-agent.cpp`，单形态/无相机模式可跑）。
 5. 远程 CI 实跑（含 aarch64），修复平台差异。
 6. 完成后跑 16 文档 §9 Runbook，产出正式 M0 报告。
+
+## 5. S1 进展（C++ mock_robot，2026-11-21）
+
+- 实现：`agent/src/{net,mock_server}.cpp`、`agent/apps/mock_robot.cpp`、`agent/include/urc/{net,mock_server}.h`；
+  消息补全 SESSION_CTRL/ESTOP/EVENT/ERROR/PING/PONG/FEEDBACK/VIDEO；`liburc_protocol` 复用。
+- Python 参考实现同步：`ref_server.py` 冻结语义（认证门/claim-arm/两步急停/会话超时/TTL/注入/stats）。
+- CTS：P0 矩阵（11 dynamic + CTS-K-01 arch）；`conftest.py` 支持 Python ref / C++ mock / 外部 target；
+  `cts-report.json` schema + `tools/check_cts_report.py`；新增 `protocol/vectors/replay.json`。
+- 向量：`checks=167 failures=0`（6 类向量，含跨流重放/错误 AAD/新消息）。
+- CI（run #10，`ed4d1bd`）：lint / vectors / cts / mock-integration / mock-asan / agent-x86_64 / agent-aarch64
+  **全部成功**；mock-soak 未触发（需 dispatch 或 `[soak]` 提交）。
+  <https://github.com/track-tech/Uni-RoboController/actions/runs/44781937841>
+- 本地验证：Python ref CTS 23 passed；C++ mock CTS 16 passed（3 次连续）；C++ 向量 167 checks；构建 `-Werror` 通过。
+- 待办：30 min soak 执行证据、独立审计（task-6）、S2 最小参考 Agent。
