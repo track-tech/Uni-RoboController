@@ -72,3 +72,24 @@
 - `task-6`（独立审计）：待实现完成后领取。
 
 > 本 Gate 通过仅表示“方案可进入实现”，不代表 S1 已交付；实现完成并补齐执行证据后才算 S1 完成。
+
+## 6. S1 完成验收（2026-11-21）
+
+| 项 | 结果 |
+|---|---|
+| 实现提交 | `ed4d1bd`（mock_robot+CTS）、`ecdbabe7`（soak 触发）、`77fd355`（审计 P0/P1 修复）、`b17401e`（S-02/S-05 可证伪性） |
+| 独立审计 | [stage-S1-audit.md](stage-S1-audit.md) 初判 FAIL（P0-01 mode 假绿 + P1）→ 修复 → §10.8 **最终 PASS**；P0=0，P1 全关闭，mutant 全部可捕获 |
+| CI（常规） | run [44794676731](https://github.com/track-tech/Uni-RoboController/actions/runs/44794676731)（`b17401e`）：7/7 已执行 job success（lint/vectors/cts/mock-integration/mock-asan/agent-x86_64/agent-aarch64） |
+| CI（含 soak） | run [44791424581](https://github.com/track-tech/Uni-RoboController/actions/runs/44791424581)（`77fd355`）：8/8 job success；mock-soak 30 min step success（18:18:28Z→18:48:28Z） |
+| P0 矩阵 | dynamic 11 个 P0 全 passed；arch `CTS-K-01` passed；skipped=xfail=0；`tools/check_cts_report.py` 通过 |
+| 单元/向量 | C++ 向量 `checks=167 failures=0`；Python ref CTS 25 passed；C++ mock CTS 17 passed ×3 |
+| 30 min soak | 由 `tools/soak.py` 强制 exit_code=0 + RSS/fd 增长判据；step success；artifact 已上传（匿名不可下载，数值由代码判据保证） |
+
+**结论：S1 完成，Gate 关闭。** 遗留 P2（不阻塞）：
+`--verbose` 未实现；TTL 为注入模拟；无 secret-file 时打印 URCPAIR；soak 的 watchdog/dropped_tx 未自动断言；ANNOUNCE 限速无 CTS 用例。下阶段（S2）前处理或登记。
+
+## 7. 任务状态（S1 完成时）
+
+- `task-5` S1 实现：completed；
+- `task-6` 独立审计：completed（审计报告 §10.8 PASS）；
+- 下一阶段 `task-7` 起为 S2（最小参考 Agent），需重新走 Brief→对抗评审→Gate。

@@ -382,3 +382,71 @@ P2 复核：P2-01（target/duration）、P2-02（occupied HELLO 限速）、P2-0
 - **判定 FAIL 的唯一原因是“验收不可信”类 P1 未真正关闭**：P1-03（EVENT 断言可选）与 P1-04（CRC 负例构造错误）各只需 2–5 行测试修补，**不涉及实现回退**；P1-07 需等 soak job 完成并核对报告；P1-08 的 VIDEO seq 断言弱于冻结要求。
 - 关闭条件（很小）：① 删除 S-02 的 try/except，使 EVENT 0x0004 断言强制；② CRC 负例只改 CRC 字段/不动密文，并让 CRC-off mutant 被 CTS 捕获；③ 用 run #13 完成证据核对 soak（8 job 全绿 + 报告判据）；④ 建议顺手修新 P2-13（避免 S-05 flaky）并在 PR 中标注新 P2-14/15/16 的接受/延期决定。
 - 满足 ①②③ 后建议直接判定 **PASS（narrow re-audit）**；本轮不重开 P0，不要求重跑 30 min soak（除非 ② 改动影响 mock 行为——不会）。
+
+## 10.8 最终窄范围复验（2026-11-21 03:00 +08，HEAD `b17401e`）
+
+> 实现侧已提交 `b17401e fix(cts): 修复S-02/S-05可证伪性与明文例外`（本地 = origin/main，工作区干净）。
+> 本次为 §10.5 P1-A 与 P2-14/16 的**最终确认**，只读实现，仅追加本节。
+
+### 10.8.1 修复 diff 核对（`77fd355..b17401e`）
+
+| 项 | 核对结果 |
+|---|---|
+| P1-03 S-02 EVENT 断言 | `try/except TimeoutError: pass` 已删除；`_recv_event(c1, EVT_SESSION_EXPIRED, timeout=2.0)` **强制断言**（`test_protocol.py:241`） |
+| P1-04 CRC 负例 | 改为 `bad_crc[28] ^= 0xFF`（**只破坏 CRC 字段**，密文/tag/AAD 不变），且新增“若 CRC 被错误关闭则该清零帧会执行 → 断言 x>0.5”双重断言（`test_protocol.py:405-416`） |
+| P1-08 / 新 P2-13 | S-05 现在 `assert seen >= 20`、`assert video_seen >= 1`，收集后 `client.arm()` 重新 arm（`test_protocol.py:369-386`）；消除看门狗时序耦合 |
+| P1-02 限速断言 | HELLO_ACK 断言收紧为 `acks <= 11` |
+| 新 P2-14 | `0x0201` 已加入明文 ERROR 例外集（docs 03 §4.1、18 §4、brief §12.2 三处同步） |
+
+### 10.8.2 本地复跑（HEAD `b17401e`，g++ 由 `F:\DSH_WS\urc-audit2` 重建）
+
+| 项 | 结果 |
+|---|---|
+| 静态四件套 | 全部 exit 0 |
+| Python ref CTS（全量） | **25 passed**，`check_cts_report` OK（P0 全 passed、skipped/xfail=0） |
+| C++ mock CTS（连续 2 次） | **17 passed ×2**，报告 `target=mock`、14 用例 `duration_ms>0`，`check_cts_report` OK |
+| 定向用例 2 次（`-k "session_timeout or replay_tamper"`） | **2 passed ×2** |
+| C++ 向量 | `checks=167 failures=0` |
+| arch 报告工具 | `checks=167 failures=0` → `CTS-K-01 passed`，`check_cts_report --suite arch` OK |
+
+### 10.8.3 关键 mutant 最终确认（修复后源码）
+
+| mutant | 判定测试 | 结果 |
+|---|---|---|
+| 关闭 CRC 校验（`frame.cpp` 去 CRC 抛错） | CTS-S-05 | **CAPTURED**：`aead_fail` 仅 1，`assert >=2` 失败（CRC 关闭后该帧 AEAD 合法被执行，不再计 aead_fail） |
+| 删除 EVENT 0x0004（`tick` 去 send_event） | CTS-S-02 | **CAPTURED**：`TimeoutError: event 0x0004 not received` |
+| 关闭 VIDEO 发送（`send_video` 直接 return） | CTS-S-05 | **CAPTURED**：`assert video_seen>=1` 失败（`assert 0 >= 1`），且不再是看门狗副作用 |
+
+→ **P1-03、P1-04、P1-08（含 P2-13）全部关闭**。
+
+### 10.8.4 CI / soak 最终证据
+
+| run | 结论 | 证据 |
+|---|---|---|
+| [44794676731](https://github.com/track-tech/Uni-RoboController/actions/runs/44794676731)（#14，`b17401e`） | **7/7 已执行 job success**（lint/vectors/cts/mock-integration/mock-asan/agent-x86_64/agent-aarch64，18:38–18:44Z）；`mock-soak` skipped（commit 无 `[soak]`，符合规格） | GitHub API jobs（经 gh-proxy 匿名读取） |
+| [44791424581](https://github.com/track-tech/Uni-RoboController/actions/runs/44791424581)（#12，`77fd355`，含 soak） | **8/8 job success**：`mock-soak` → `30 min soak` step **success（18:18:28Z→18:48:28Z，恰好 30 min）**，artifact 上传 step success | GitHub API jobs；`soak.py@77fd355` 已含 exit_code=0 + RSS 增长 + fd 增长判据，step 成功即表示这些判据通过 |
+| soak 报告内容 | `soak-report.json` artifact 已生成（upload success），但**匿名无法下载内容**；报告数值未直接读取 | 判据由 `soak.py` 代码强制（`tools/soak.py:146-152`）；job 成功等价于其判据通过 |
+
+> 复核限制（如实记录）：GitHub 匿名 API 限额用尽后改用 gh-proxy 读取 jobs 元数据；artifact/日志内容仍受匿名权限限制。因此 soak 的“8 job 全绿 + 30 min step success + 判据代码强制”可确认；报告的 `rss_kb/baseline/exit_code` 具体数值未直接核验。§6.3 中 watchdog 误触发与 `dropped_tx≈5%±20%` 仍未写入自动判据（P2-15，非阻塞）。
+
+### 10.8.5 最终 P0/P1 关闭表与结论
+
+| ID | 状态 | 复验依据 |
+|---|---|---|
+| P0-01 | **已关闭 ✅** | 行为探针 + CTS-C-03 + mutant R1（§10.2） |
+| P1-01 | **已关闭 ✅** | 静默丢弃/gate_drop 探针 + CTS-P-02 |
+| P1-02 | **已关闭 ✅** | 探针 10/20 + 新用例 + mutant R5；ANNOUNCE 仅探针（P2-16） |
+| P1-03 | **已关闭 ✅** | 强制 EVENT 断言 + mutant R3 捕获（§10.8.3） |
+| P1-04 | **已关闭 ✅** | 只改 CRC 字段负例 + mutant R2 捕获（§10.8.3） |
+| P1-05 | **已关闭 ✅** | CTS-P-01 另一来源断言 + 探针 |
+| P1-06 | **已关闭 ✅** | rgb888-only 收口 + 探针 + docs 16/18 |
+| P1-07 | **已关闭 ✅** | soak.py 判据提交 + run #12 8/8 job success（含 30 min soak step success）；报告数值待有权限者抽查 |
+| P1-08 | **已关闭 ✅** | S-03 停时断言 + S-05 `seen>=20`/`video_seen>=1` + mutant R4 捕获 |
+
+**最终复验结论：PASS（窄范围复验通过）**。
+
+- P0 = 0；P1 全部关闭；预登记 8 mutant 与复验定点 mutant（mode/CRC/EVENT/VIDEO/HELLO 限速）均可被测试捕获；静态/ref CTS/mock CTS/向量/arch 报告/CI 两个 run 均绿；soak 30 min step 成功且判据已代码化。
+- S1 Gate 可据此关闭（历史 FAIL 记录保留于 §1–§9 供追溯）。
+- 遗留 **P2（不阻塞，建议下阶段处理）**：P2-03 `--verbose` 未实现；P2-08 TTL 为注入模拟；P2-09 无 secret-file 时打印 URCPAIR；P2-15 soak 阈值 30 min 时允许 1 MB（约 §6.3 的两倍）且 watchdog/dropped_tx 未自动断言；P2-16 ANNOUNCE 限速无 CTS 用例。
+- 证据目录（工作区外）：`F:\DSH_WS\urc-audit2\mut\{mut2.py, mut2-result.json, probe_verify.py, probe2-result.json, arch-report.json}`。
+- 本次复验未修改实现；仅在本文件追加 §10.8（提交建议：`docs(s1): 追加S1审计最终复验结论`）。

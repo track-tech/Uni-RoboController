@@ -79,3 +79,14 @@ CI 运行记录：<https://github.com/track-tech/Uni-RoboController/actions/work
   <https://github.com/track-tech/Uni-RoboController/actions/runs/44781937841>
 - 本地验证：Python ref CTS 23 passed；C++ mock CTS 16 passed（3 次连续）；C++ 向量 167 checks；构建 `-Werror` 通过。
 - 待办：30 min soak 执行证据、独立审计（task-6）、S2 最小参考 Agent。
+
+### 5.1 审计与最终结果（2026-11-21）
+
+- 独立审计初判 **FAIL**（P0-01：CTS-C-03 未测未知 mode，mock 未校验 `CTRL.mode`；P1×8）；
+  修复后窄范围复验 **PASS**（P0=0、P1 全关闭、mutant 全部可捕获）。见 [stage-S1-audit.md](../reviews/stage-S1-audit.md) §10.8。
+- 修复提交：`77fd355`（P0/P1）、`b17401e`（S-02/S-05 可证伪性）。
+- CI：run [44794676731](https://github.com/track-tech/Uni-RoboController/actions/runs/44794676731) 7/7 job success；
+  run [44791424581](https://github.com/track-tech/Uni-RoboController/actions/runs/44791424581) 8/8（含 30 min soak success）。
+- CTS：dynamic 11 个 P0 全 passed + arch K-01 passed；Python ref 25 passed、C++ mock 17 passed（连续 3 次）；
+  C++ 向量 167 checks。
+- 遗留 P2：`--verbose`、TTL 注入语义、URCPAIR 日志约束、soak watchdog/dropped 断言、ANNOUNCE 限速 CTS。
