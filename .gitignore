@@ -1,6 +1,10 @@
 # 构建产物
 build/
+build*/
 cmake_build/
+agent/build*/
+artifacts/
+.cts-tmp/
 .gradle/
 local.properties
 *.apk
@@ -25,6 +29,7 @@ tmp/
 output/
 logs/
 *.log
+conformance/cts-*.json
 
 # 编辑器/系统
 .idea/

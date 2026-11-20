@@ -158,6 +158,22 @@ def build_crypto() -> dict:
             "given": {"key_hex": hx(key), "nonce_hex": hx(nonce), "aad_hex": hx(aad), "plaintext_hex": hx(plain)},
             "expect": {"ciphertext_hex": hx(cipher)},
         })
+    for name, seq, to_robot in [("app2robot", 1, True), ("robot2app", 42, False),
+                                ("wrap", 0x0102030405060708, True)]:
+        nonce = crypto.CryptoContext.make_nonce(seq, to_robot)
+        cases.append({"name": f"nonce/{name}", "kind": "nonce",
+                      "given": {"seq": seq, "to_robot": to_robot},
+                      "expect": {"nonce_hex": hx(nonce)}})
+    for name, aad, bad_aad, plain in [
+        ("wrong_aad", b"header-ok", b"header-bad", b"payload"),
+        ("wrong_aad_empty", b"", b"x", b"abc"),
+    ]:
+        nonce = crypto.CryptoContext.make_nonce(9, True)
+        cipher = crypto.CryptoContext.encrypt(ctx.app2robot_key, nonce, aad, plain)
+        cases.append({"name": f"aead_bad_aad/{name}", "kind": "aead_bad_aad",
+                      "given": {"key_hex": hx(ctx.app2robot_key), "nonce_hex": hx(nonce),
+                                "bad_aad_hex": hx(bad_aad), "ciphertext_hex": hx(cipher)},
+                      "expect": {"decrypt_failed": True}})
     replay = [
         ("in_window_first", 8, [100, 101, 102], 101, False),
         ("new_high", 8, [100, 101, 102], 103, True),
@@ -269,13 +285,74 @@ def build_session() -> dict:
     cases.append({"name": "discover/basic", "kind": "discover", "given": {
         "app_nonce_hex": hx(APP_NONCE), "app_id_hex": hx(b"app-id-000000001")},
         "expect": {"hex": hx(disc)}})
-    ann = messages.Announce("mock-quadruped", "Mock Quad", "quadruped", 47800, 47801, 47802, 47803, 47880, 0xDEADBEEF, 1)
+    ann = messages.Announce("mock-quadruped", "Mock Quad", "quadruped", 47800, 0, 0, 0, 47880, 0xDEADBEEF, 1)
     cases.append({"name": "announce/basic", "kind": "announce", "given": {
         "robot_id": "mock-quadruped", "robot_name": "Mock Quad", "form": "quadruped",
-        "ctrl_port": 47800, "video_port": 47801, "depth_port": 47802, "map_port": 47803,
+        "ctrl_port": 47800, "video_port": 0, "depth_port": 0, "map_port": 0,
         "web_port": 47880, "caps_hash": 0xDEADBEEF, "pair_state": 1},
         "expect": {"hex": hx(messages.pack_announce(ann))}})
+    # 新增消息：SESSION_CTRL/EVENT/ERROR/PING/PONG/FEEDBACK/VIDEO 头
+    for action in range(5):
+        payload = messages.pack_session_ctrl(action)
+        cases.append({"name": f"session_ctrl/action_{action}", "kind": "session_ctrl",
+                      "given": {"action": action}, "expect": {"hex": hx(payload)}})
+    for code, level, text in [(0x0001, 0, "estop acked"), (0x0002, 1, "watchdog"), (0x0003, 0, "armed")]:
+        cases.append({"name": f"event/code_{code:04x}", "kind": "event",
+                      "given": {"code": code, "level": level, "message": text},
+                      "expect": {"hex": hx(messages.pack_event(code, level, text))}})
+    cases.append({"name": "error/basic", "kind": "error",
+                  "given": {"code": 0x0101, "message": "auth failed"},
+                  "expect": {"hex": hx(messages.pack_error(0x0101, "auth failed"))}})
+    cases.append({"name": "ping/basic", "kind": "ping", "given": {"ts_us": 123456789},
+                  "expect": {"hex": hx(struct.pack("<Q", 123456789))}})
+    cases.append({"name": "pong/basic", "kind": "pong", "given": {"ts_us": 987654321},
+                  "expect": {"hex": hx(struct.pack("<Q", 987654321))}})
+    feedback = messages.pack_feedback(10, 1, 2, 5000, 60, 3, 1500, 200, 4000, 0b101)
+    cases.append({"name": "feedback/basic", "kind": "feedback",
+                  "given": {"video_ok": 10, "video_lost": 1, "packets_lost": 2, "recv_kbps": 5000,
+                            "decode_fps": 60, "decode_ms": 3, "rtt_us": 1500, "jitter_us": 200,
+                            "target_kbps": 4000, "flags": 0b101},
+                  "expect": {"hex": hx(feedback)}})
+    video_payload = messages.pack_video(1, 1000, 5, 0, 1, 0, 0x05, b"abcde")
+    cases.append({"name": "video/header", "kind": "video",
+                  "given": {"frame_id": 1, "frame_ts_us": 1000, "frame_bytes": 5, "pkt_idx": 0,
+                            "pkt_cnt": 1, "group_id": 0, "media_flags": 0x05, "data_hex": "6162636465"},
+                  "expect": {"hex": hx(video_payload)}})
     return {"meta": {"protocol": "urc/1"}, "cases": cases}
+
+
+def build_replay() -> dict:
+    """帧级重放向量：每方向全局窗口，跨流同 seq 必须拒绝。"""
+    cases = []
+
+    def frame_hex(ftype: int, stream: int, session_id: int, seq: int, payload: bytes = b"") -> str:
+        return hx(frame.pack(frame.Frame(ftype, payload, stream=stream, session_id=session_id,
+                                         seq=seq, ts_us=1000)))
+
+    cases.append({"name": "replay/global_monotonic", "frames": [
+        frame_hex(frame.T_PING, frame.S_CTRL, 1, 100),
+        frame_hex(frame.T_TELEM, frame.S_TELEMETRY, 1, 101),
+        frame_hex(frame.T_VIDEO, frame.S_VIDEO, 1, 102),
+    ], "expect": ["accept", "accept", "accept"]})
+    cases.append({"name": "replay/duplicate", "frames": [
+        frame_hex(frame.T_PING, frame.S_CTRL, 1, 200),
+        frame_hex(frame.T_PING, frame.S_CTRL, 1, 200),
+    ], "expect": ["accept", "reject"]})
+    cases.append({"name": "replay/cross_stream_same_seq", "frames": [
+        frame_hex(frame.T_CTRL, frame.S_CTRL, 1, 300),
+        frame_hex(frame.T_FEEDBACK, frame.S_FEEDBACK, 1, 300),
+    ], "expect": ["accept", "reject"]})
+    cases.append({"name": "replay/old_out_of_window", "frames": [
+        frame_hex(frame.T_PING, frame.S_CTRL, 1, 500),
+        frame_hex(frame.T_PING, frame.S_CTRL, 1, (500 - 3000) & 0xFFFFFFFF),
+    ], "expect": ["accept", "reject"]})
+    cases.append({"name": "replay/u32_wrap", "frames": [
+        frame_hex(frame.T_PING, frame.S_CTRL, 1, 0xFFFFFFFE),
+        frame_hex(frame.T_PING, frame.S_CTRL, 1, 0xFFFFFFFF),
+        frame_hex(frame.T_PING, frame.S_CTRL, 1, 0),
+        frame_hex(frame.T_PING, frame.S_CTRL, 1, 1),
+    ], "expect": ["accept", "accept", "accept", "accept"]})
+    return {"meta": {"protocol": "urc/1", "note": "seq 每方向全局，跨流共享"}, "cases": cases}
 
 
 def write_or_check(name: str, obj: dict, check: bool) -> int:
@@ -302,7 +379,8 @@ def main() -> int:
     VECTORS.mkdir(parents=True, exist_ok=True)
     failed = 0
     for name, builder in (("frames", build_frames), ("crypto", build_crypto),
-                          ("frag", build_frag), ("session", build_session)):
+                          ("frag", build_frag), ("session", build_session),
+                          ("replay", build_replay)):
         failed += write_or_check(name, builder(), args.check)
     return 1 if failed else 0
 

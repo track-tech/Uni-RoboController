@@ -19,6 +19,35 @@ target_include_directories(urc_protocol PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inclu
 target_link_libraries(urc_protocol PUBLIC OpenSSL::Crypto)
 target_compile_options(urc_protocol PRIVATE -Wall -Wextra -Wpedantic -Wno-deprecated-declarations)
 
+option(URC_BUILD_APPS "Build mock_robot / reference agent applications" OFF)
+option(URC_WERROR "Treat project warnings as errors" OFF)
+if(URC_WERROR)
+    target_compile_options(urc_protocol PRIVATE -Werror)
+endif()
+
+if(URC_BUILD_APPS)
+    if(NOT UNIX)
+        message(FATAL_ERROR "URC_BUILD_APPS requires POSIX (use WSL/container or Python ref server)")
+    endif()
+    add_library(urc_server
+        src/net.cpp
+        src/mock_server.cpp
+    )
+    target_include_directories(urc_server PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_link_libraries(urc_server PUBLIC urc_protocol OpenSSL::Crypto)
+    target_include_directories(urc_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
+    target_compile_options(urc_server PRIVATE -Wall -Wextra -Wpedantic -Wno-deprecated-declarations)
+    if(URC_WERROR)
+        target_compile_options(urc_server PRIVATE -Werror)
+    endif()
+
+    add_executable(mock_robot apps/mock_robot.cpp)
+    target_link_libraries(mock_robot PRIVATE urc_server)
+    if(URC_WERROR)
+        target_compile_options(mock_robot PRIVATE -Werror)
+    endif()
+endif()
+
 enable_testing()
 
 add_executable(urc_vectors tests/test_vectors.cpp)

@@ -37,9 +37,9 @@ struct HelloAck {
     std::array<uint8_t, 16> robot_nonce{};
     uint32_t caps_hash = 0;
     uint16_t ctrl_port = 47800;
-    uint16_t video_port = 47801;
-    uint16_t depth_port = 47802;
-    uint16_t map_port = 47803;
+    uint16_t video_port = 0;
+    uint16_t depth_port = 0;
+    uint16_t map_port = 0;
     uint16_t web_port = 47880;
     uint8_t auth_required = 1;
 };
@@ -113,6 +113,80 @@ struct ModelState {
 
 Bytes pack_model_state(const ModelState& state);
 
+// ---------- SESSION_CTRL / 动作码 ----------
+
+enum SessionAction : uint8_t {
+    kActClaim = 0,
+    kActRelease = 1,
+    kActViewer = 2,
+    kActArm = 3,
+    kActReleaseEstop = 4,
+};
+
+Bytes pack_session_ctrl(uint8_t action);
+uint8_t unpack_session_ctrl(std::span<const uint8_t> payload);
+
+// ---------- ESTOP / EVENT / ERROR ----------
+
+struct Estop {
+    uint8_t reason = 0;
+    uint64_t ts_us = 0;
+};
+
+Bytes pack_estop(const Estop& estop);
+Estop unpack_estop(std::span<const uint8_t> payload);
+
+struct Event {
+    uint16_t code = 0;
+    uint8_t level = 0;
+    std::string message;
+};
+
+Bytes pack_event(const Event& event);
+Event unpack_event(std::span<const uint8_t> payload);
+
+struct ErrorMsg {
+    uint16_t code = 0;
+    std::string message;
+};
+
+Bytes pack_error(const ErrorMsg& error);
+ErrorMsg unpack_error(std::span<const uint8_t> payload);
+
+// ---------- PING / PONG ----------
+
+Bytes pack_pong(uint64_t echo_ts_us);
+uint64_t unpack_ping(std::span<const uint8_t> payload);
+
+// ---------- FEEDBACK ----------
+
+struct Feedback {
+    uint32_t video_ok = 0, video_lost = 0, packets_lost = 0, recv_kbps = 0;
+    uint16_t decode_fps = 0, decode_ms = 0;
+    uint32_t rtt_us = 0, jitter_us = 0, target_kbps = 0;
+    uint16_t flags = 0;
+};
+
+Bytes pack_feedback(const Feedback& fb);
+Feedback unpack_feedback(std::span<const uint8_t> payload);
+
+// ---------- VIDEO 头 ----------
+
+constexpr size_t kVideoHeaderSize = 23;
+
+struct VideoHeader {
+    uint32_t frame_id = 0;
+    uint64_t frame_ts_us = 0;
+    uint32_t frame_bytes = 0;
+    uint16_t pkt_idx = 0;
+    uint16_t pkt_cnt = 0;
+    uint16_t group_id = 0;
+    uint8_t media_flags = 0;
+};
+
+Bytes pack_video(const VideoHeader& header, std::span<const uint8_t> data);
+VideoHeader unpack_video(std::span<const uint8_t> payload);
+
 // ---------- 发现 / 广播 ----------
 
 Bytes pack_discover(std::span<const uint8_t, 16> app_nonce, std::span<const uint8_t, 16> app_id);
@@ -122,9 +196,9 @@ struct Announce {
     std::string robot_name;
     std::string form;
     uint16_t ctrl_port = 47800;
-    uint16_t video_port = 47801;
-    uint16_t depth_port = 47802;
-    uint16_t map_port = 47803;
+    uint16_t video_port = 0;
+    uint16_t depth_port = 0;
+    uint16_t map_port = 0;
     uint16_t web_port = 47880;
     uint32_t caps_hash = 0;
     uint8_t pair_state = 0;

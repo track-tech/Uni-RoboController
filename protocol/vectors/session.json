@@ -164,15 +164,168 @@
         "robot_name": "Mock Quad",
         "form": "quadruped",
         "ctrl_port": 47800,
-        "video_port": 47801,
-        "depth_port": 47802,
-        "map_port": 47803,
+        "video_port": 0,
+        "depth_port": 0,
+        "map_port": 0,
         "web_port": 47880,
         "caps_hash": 3735928559,
         "pair_state": 1
       },
       "expect": {
-        "hex": "5552433101210000000e6d6f636b2d717561647275706564094d6f636b205175616409717561647275706564b8bab9babababbba08bbefbeadde01010000003faa4df5"
+        "hex": "5552433101210000000e6d6f636b2d717561647275706564094d6f636b205175616409717561647275706564b8ba00000000000008bbefbeadde010100000034e12421"
+      }
+    },
+    {
+      "name": "session_ctrl/action_0",
+      "kind": "session_ctrl",
+      "given": {
+        "action": 0
+      },
+      "expect": {
+        "hex": "00000000"
+      }
+    },
+    {
+      "name": "session_ctrl/action_1",
+      "kind": "session_ctrl",
+      "given": {
+        "action": 1
+      },
+      "expect": {
+        "hex": "01000000"
+      }
+    },
+    {
+      "name": "session_ctrl/action_2",
+      "kind": "session_ctrl",
+      "given": {
+        "action": 2
+      },
+      "expect": {
+        "hex": "02000000"
+      }
+    },
+    {
+      "name": "session_ctrl/action_3",
+      "kind": "session_ctrl",
+      "given": {
+        "action": 3
+      },
+      "expect": {
+        "hex": "03000000"
+      }
+    },
+    {
+      "name": "session_ctrl/action_4",
+      "kind": "session_ctrl",
+      "given": {
+        "action": 4
+      },
+      "expect": {
+        "hex": "04000000"
+      }
+    },
+    {
+      "name": "event/code_0001",
+      "kind": "event",
+      "given": {
+        "code": 1,
+        "level": 0,
+        "message": "estop acked"
+      },
+      "expect": {
+        "hex": "0100000b6573746f702061636b6564"
+      }
+    },
+    {
+      "name": "event/code_0002",
+      "kind": "event",
+      "given": {
+        "code": 2,
+        "level": 1,
+        "message": "watchdog"
+      },
+      "expect": {
+        "hex": "020001087761746368646f67"
+      }
+    },
+    {
+      "name": "event/code_0003",
+      "kind": "event",
+      "given": {
+        "code": 3,
+        "level": 0,
+        "message": "armed"
+      },
+      "expect": {
+        "hex": "0300000561726d6564"
+      }
+    },
+    {
+      "name": "error/basic",
+      "kind": "error",
+      "given": {
+        "code": 257,
+        "message": "auth failed"
+      },
+      "expect": {
+        "hex": "01010b61757468206661696c6564"
+      }
+    },
+    {
+      "name": "ping/basic",
+      "kind": "ping",
+      "given": {
+        "ts_us": 123456789
+      },
+      "expect": {
+        "hex": "15cd5b0700000000"
+      }
+    },
+    {
+      "name": "pong/basic",
+      "kind": "pong",
+      "given": {
+        "ts_us": 987654321
+      },
+      "expect": {
+        "hex": "b168de3a00000000"
+      }
+    },
+    {
+      "name": "feedback/basic",
+      "kind": "feedback",
+      "given": {
+        "video_ok": 10,
+        "video_lost": 1,
+        "packets_lost": 2,
+        "recv_kbps": 5000,
+        "decode_fps": 60,
+        "decode_ms": 3,
+        "rtt_us": 1500,
+        "jitter_us": 200,
+        "target_kbps": 4000,
+        "flags": 5
+      },
+      "expect": {
+        "hex": "0a0000000100000002000000881300003c000300dc050000c8000000a00f000005000000"
+      }
+    },
+    {
+      "name": "video/header",
+      "kind": "video",
+      "given": {
+        "frame_id": 1,
+        "frame_ts_us": 1000,
+        "frame_bytes": 5,
+        "pkt_idx": 0,
+        "pkt_cnt": 1,
+        "group_id": 0,
+        "media_flags": 5,
+        "data_hex": "6162636465"
+      },
+      "expect": {
+        "hex": "01000000e80300000000000005000000000001000000056162636465"
       }
     }
   ]

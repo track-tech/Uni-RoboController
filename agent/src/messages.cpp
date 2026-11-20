@@ -261,6 +261,140 @@ Bytes pack_discover(std::span<const uint8_t, 16> app_nonce, std::span<const uint
     return out;
 }
 
+Bytes pack_session_ctrl(uint8_t action) {
+    wire::Bytes out;
+    wire::put_u8(out, action);
+    wire::put_u8(out, 0);
+    wire::put_u16(out, 0);
+    return out;
+}
+
+uint8_t unpack_session_ctrl(std::span<const uint8_t> payload) {
+    wire::Reader r(payload);
+    return r.u8();
+}
+
+Bytes pack_estop(const Estop& estop) {
+    wire::Bytes out;
+    wire::put_u8(out, estop.reason);
+    wire::put_u64(out, estop.ts_us);
+    return out;
+}
+
+Estop unpack_estop(std::span<const uint8_t> payload) {
+    wire::Reader r(payload);
+    Estop e;
+    e.reason = r.u8();
+    e.ts_us = r.u64();
+    return e;
+}
+
+Bytes pack_event(const Event& event) {
+    wire::Bytes out;
+    wire::put_u16(out, event.code);
+    wire::put_u8(out, event.level);
+    auto msg = event.message.substr(0, 255);
+    wire::put_u8(out, static_cast<uint8_t>(msg.size()));
+    out.insert(out.end(), msg.begin(), msg.end());
+    return out;
+}
+
+Event unpack_event(std::span<const uint8_t> payload) {
+    wire::Reader r(payload);
+    Event e;
+    e.code = r.u16();
+    e.level = r.u8();
+    e.message = r.str_u8();
+    return e;
+}
+
+Bytes pack_error(const ErrorMsg& error) {
+    wire::Bytes out;
+    wire::put_u16(out, error.code);
+    auto msg = error.message.substr(0, 255);
+    wire::put_u8(out, static_cast<uint8_t>(msg.size()));
+    out.insert(out.end(), msg.begin(), msg.end());
+    return out;
+}
+
+ErrorMsg unpack_error(std::span<const uint8_t> payload) {
+    wire::Reader r(payload);
+    ErrorMsg e;
+    e.code = r.u16();
+    e.message = r.str_u8();
+    return e;
+}
+
+Bytes pack_pong(uint64_t echo_ts_us) {
+    wire::Bytes out;
+    wire::put_u64(out, echo_ts_us);
+    return out;
+}
+
+uint64_t unpack_ping(std::span<const uint8_t> payload) {
+    wire::Reader r(payload);
+    return r.u64();
+}
+
+Bytes pack_feedback(const Feedback& fb) {
+    wire::Bytes out;
+    wire::put_u32(out, fb.video_ok);
+    wire::put_u32(out, fb.video_lost);
+    wire::put_u32(out, fb.packets_lost);
+    wire::put_u32(out, fb.recv_kbps);
+    wire::put_u16(out, fb.decode_fps);
+    wire::put_u16(out, fb.decode_ms);
+    wire::put_u32(out, fb.rtt_us);
+    wire::put_u32(out, fb.jitter_us);
+    wire::put_u32(out, fb.target_kbps);
+    wire::put_u16(out, fb.flags);
+    wire::put_u16(out, 0);
+    return out;
+}
+
+Feedback unpack_feedback(std::span<const uint8_t> payload) {
+    wire::Reader r(payload);
+    Feedback fb;
+    fb.video_ok = r.u32();
+    fb.video_lost = r.u32();
+    fb.packets_lost = r.u32();
+    fb.recv_kbps = r.u32();
+    fb.decode_fps = r.u16();
+    fb.decode_ms = r.u16();
+    fb.rtt_us = r.u32();
+    fb.jitter_us = r.u32();
+    fb.target_kbps = r.u32();
+    fb.flags = r.u16();
+    r.u16();
+    return fb;
+}
+
+Bytes pack_video(const VideoHeader& header, std::span<const uint8_t> data) {
+    wire::Bytes out;
+    wire::put_u32(out, header.frame_id);
+    wire::put_u64(out, header.frame_ts_us);
+    wire::put_u32(out, header.frame_bytes);
+    wire::put_u16(out, header.pkt_idx);
+    wire::put_u16(out, header.pkt_cnt);
+    wire::put_u16(out, header.group_id);
+    wire::put_u8(out, header.media_flags);
+    wire::put_bytes(out, data);
+    return out;
+}
+
+VideoHeader unpack_video(std::span<const uint8_t> payload) {
+    wire::Reader r(payload);
+    VideoHeader h;
+    h.frame_id = r.u32();
+    h.frame_ts_us = r.u64();
+    h.frame_bytes = r.u32();
+    h.pkt_idx = r.u16();
+    h.pkt_cnt = r.u16();
+    h.group_id = r.u16();
+    h.media_flags = r.u8();
+    return h;
+}
+
 Bytes pack_announce(const Announce& announce) {
     wire::Bytes out;
     wire::put_u32(out, kMagic);

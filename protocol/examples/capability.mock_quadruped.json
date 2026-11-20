@@ -63,7 +63,8 @@
               -1.5,
               1.5
             ],
-            "deadband": 0.05
+            "deadband": 0.05,
+            "scale": 2.0
           },
           {
             "id": "body.linear_y",

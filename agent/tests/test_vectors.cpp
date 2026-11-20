@@ -162,6 +162,22 @@ void run_crypto(const fs::path& path) {
                 std::span<const uint8_t, 32>(key.data(), 32),
                 std::span<const uint8_t, 12>(nonce.data(), 12), aad, cipher);
             check(back == plain, name + "/decrypt");
+        } else if (kind == "nonce") {
+            auto nonce = urc::CryptoContext::make_nonce(get<uint64_t>(g, "seq"), get<bool>(g, "to_robot"));
+            check(tohex(nonce) == e.at("nonce_hex").get<std::string>(), name);
+        } else if (kind == "aead_bad_aad") {
+            auto key = unhex(g.at("key_hex").get<std::string>());
+            auto nonce = unhex(g.at("nonce_hex").get<std::string>());
+            auto bad_aad = unhex(g.at("bad_aad_hex").get<std::string>());
+            auto cipher = unhex(g.at("ciphertext_hex").get<std::string>());
+            bool failed = false;
+            try {
+                urc::aes_gcm_decrypt(std::span<const uint8_t, 32>(key.data(), 32),
+                                     std::span<const uint8_t, 12>(nonce.data(), 12), bad_aad, cipher);
+            } catch (const std::exception&) {
+                failed = true;
+            }
+            check(failed == e.at("decrypt_failed").get<bool>(), name);
         } else if (kind == "replay") {
             urc::ReplayWindow window(get<uint32_t>(g, "window", 2048));
             for (auto seq : g.at("previous")) window.accept(seq.get<uint32_t>());
@@ -316,10 +332,69 @@ void run_session(const fs::path& path) {
             a.caps_hash = get<uint32_t>(g, "caps_hash");
             a.pair_state = get<uint8_t>(g, "pair_state");
             got = urc::pack_announce(a);
+        } else if (kind == "session_ctrl") {
+            got = urc::pack_session_ctrl(get<uint8_t>(g, "action"));
+        } else if (kind == "event") {
+            urc::Event ev;
+            ev.code = get<uint16_t>(g, "code");
+            ev.level = get<uint8_t>(g, "level");
+            ev.message = g.at("message").get<std::string>();
+            got = urc::pack_event(ev);
+        } else if (kind == "error") {
+            urc::ErrorMsg err;
+            err.code = get<uint16_t>(g, "code");
+            err.message = g.at("message").get<std::string>();
+            got = urc::pack_error(err);
+        } else if (kind == "ping" || kind == "pong") {
+            got = urc::pack_pong(get<uint64_t>(g, "ts_us"));
+        } else if (kind == "feedback") {
+            urc::Feedback fb;
+            fb.video_ok = get<uint32_t>(g, "video_ok");
+            fb.video_lost = get<uint32_t>(g, "video_lost");
+            fb.packets_lost = get<uint32_t>(g, "packets_lost");
+            fb.recv_kbps = get<uint32_t>(g, "recv_kbps");
+            fb.decode_fps = get<uint16_t>(g, "decode_fps");
+            fb.decode_ms = get<uint16_t>(g, "decode_ms");
+            fb.rtt_us = get<uint32_t>(g, "rtt_us");
+            fb.jitter_us = get<uint32_t>(g, "jitter_us");
+            fb.target_kbps = get<uint32_t>(g, "target_kbps");
+            fb.flags = get<uint16_t>(g, "flags");
+            got = urc::pack_feedback(fb);
+        } else if (kind == "video") {
+            urc::VideoHeader vh;
+            vh.frame_id = get<uint32_t>(g, "frame_id");
+            vh.frame_ts_us = get<uint64_t>(g, "frame_ts_us");
+            vh.frame_bytes = get<uint32_t>(g, "frame_bytes");
+            vh.pkt_idx = get<uint16_t>(g, "pkt_idx");
+            vh.pkt_cnt = get<uint16_t>(g, "pkt_cnt");
+            vh.group_id = get<uint16_t>(g, "group_id");
+            vh.media_flags = get<uint8_t>(g, "media_flags");
+            auto data = unhex(g.at("data_hex").get<std::string>());
+            got = urc::pack_video(vh, data);
         } else {
             continue;
         }
         check(tohex(got) == c.at("expect").at("hex").get<std::string>(), name);
+    }
+}
+
+// ---------- replay（帧级全局窗口） ----------
+
+void run_replay(const fs::path& path) {
+    std::ifstream in(path);
+    auto doc = json::parse(in);
+    for (const auto& c : doc.at("cases")) {
+        const std::string name = c.at("name").get<std::string>();
+        urc::ReplayWindow window(2048);
+        size_t i = 0;
+        for (const auto& frame_hex : c.at("frames")) {
+            auto raw = unhex(frame_hex.get<std::string>());
+            auto frame = urc::unpack_frame(raw);
+            bool accepted = window.accept(frame.seq);
+            bool want = c.at("expect").at(i).get<std::string>() == "accept";
+            check(accepted == want, name + "/" + std::to_string(i));
+            ++i;
+        }
     }
 }
 
@@ -332,6 +407,7 @@ int main(int argc, char** argv) {
         run_crypto(dir / "crypto.json");
         run_frag(dir / "frag.json");
         run_session(dir / "session.json");
+        run_replay(dir / "replay.json");
     } catch (const std::exception& exc) {
         std::printf("[FAIL] exception: %s\n", exc.what());
         return 2;

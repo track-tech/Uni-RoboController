@@ -62,6 +62,7 @@ enum Stream : uint8_t {
     kStreamDepth = 3,
     kStreamMap = 4,
     kStreamConfig = 5,
+    kStreamFeedback = 6,
 };
 
 struct CryptoContext;

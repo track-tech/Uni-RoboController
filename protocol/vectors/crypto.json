@@ -124,6 +124,65 @@
       }
     },
     {
+      "name": "nonce/app2robot",
+      "kind": "nonce",
+      "given": {
+        "seq": 1,
+        "to_robot": true
+      },
+      "expect": {
+        "nonce_hex": "010000000100000000000000"
+      }
+    },
+    {
+      "name": "nonce/robot2app",
+      "kind": "nonce",
+      "given": {
+        "seq": 42,
+        "to_robot": false
+      },
+      "expect": {
+        "nonce_hex": "020000002a00000000000000"
+      }
+    },
+    {
+      "name": "nonce/wrap",
+      "kind": "nonce",
+      "given": {
+        "seq": 72623859790382856,
+        "to_robot": true
+      },
+      "expect": {
+        "nonce_hex": "010000000807060504030201"
+      }
+    },
+    {
+      "name": "aead_bad_aad/wrong_aad",
+      "kind": "aead_bad_aad",
+      "given": {
+        "key_hex": "7c44e7f156ea322f20ad788c7cae1b80dfebec48dac788e68ff1670bf865b8a0",
+        "nonce_hex": "010000000900000000000000",
+        "bad_aad_hex": "6865616465722d626164",
+        "ciphertext_hex": "f6593dba749456d319b9bac6ef43a6e8ba584d11b190ad"
+      },
+      "expect": {
+        "decrypt_failed": true
+      }
+    },
+    {
+      "name": "aead_bad_aad/wrong_aad_empty",
+      "kind": "aead_bad_aad",
+      "given": {
+        "key_hex": "7c44e7f156ea322f20ad788c7cae1b80dfebec48dac788e68ff1670bf865b8a0",
+        "nonce_hex": "010000000900000000000000",
+        "bad_aad_hex": "78",
+        "ciphertext_hex": "e75a271af2be3d07029310e8857b8847e2b4c3"
+      },
+      "expect": {
+        "decrypt_failed": true
+      }
+    },
+    {
       "name": "replay/in_window_first",
       "kind": "replay",
       "given": {

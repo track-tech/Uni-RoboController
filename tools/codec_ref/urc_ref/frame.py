@@ -64,6 +64,7 @@ S_VIDEO = 2
 S_DEPTH = 3
 S_MAP = 4
 S_CONFIG = 5
+S_FEEDBACK = 6
 
 HEADER = struct.Struct("<IBBBBIIQHHI")
 
