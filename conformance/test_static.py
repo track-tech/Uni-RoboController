@@ -28,13 +28,17 @@ def test_vectors_up_to_date():
 
 
 @pytest.mark.static
-@pytest.mark.parametrize("name", ["frames", "crypto", "frag", "session"])
+@pytest.mark.parametrize("name", ["frames", "crypto", "frag", "session", "replay"])
 def test_vectors_parse(name):
     path = ROOT / "protocol" / "vectors" / f"{name}.json"
     doc = json.loads(path.read_text(encoding="utf-8"))
     assert doc["cases"], "empty vector file"
     for case in doc["cases"]:
-        assert "name" in case and "given" in case and "expect" in case
+        assert "name" in case and "expect" in case
+        if name == "replay":
+            assert case.get("frames"), "empty replay case"
+        else:
+            assert "given" in case
 
 
 @pytest.mark.static

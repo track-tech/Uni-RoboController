@@ -28,7 +28,6 @@ REPORT: dict[str, dict] = {}
 ITEMS: dict[str, str] = {}
 CFG: dict[str, object] = {}
 
-
 def free_port() -> int:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.bind(("127.0.0.1", 0))
@@ -72,6 +71,8 @@ class ServerHandle:
         except subprocess.TimeoutExpired:
             self.proc.kill()
             self.proc.wait(timeout=5)
+        if self.stats_file:
+            Path(self.stats_file).unlink(missing_ok=True)
 
     def stats(self) -> dict:
         if not self.stats_file or not Path(self.stats_file).exists():
@@ -198,7 +199,8 @@ def pytest_collection_modifyitems(config, items):
 def pytest_runtest_logreport(report):
     if not report.when == "call" and not (report.when == "setup" and report.skipped):
         return
-    entry = REPORT.setdefault(report.nodeid, {"status": "passed", "detail": ""})
+    entry = REPORT.setdefault(report.nodeid, {"status": "passed", "detail": "", "duration_ms": 0})
+    entry["duration_ms"] = int(report.duration * 1000)
     if report.failed:
         entry["status"] = "failed"
         entry["detail"] = str(report.longrepr)[-500:]
@@ -212,13 +214,16 @@ def pytest_runtest_logreport(report):
 def pytest_sessionfinish(session, exitstatus):
     cases = []
     for nodeid, cts_id in sorted(ITEMS.items(), key=lambda kv: kv[1]):
-        result = REPORT.get(nodeid, {"status": "skipped"})
+        result = REPORT.get(nodeid, {"status": "skipped", "duration_ms": 0})
         cases.append({"id": cts_id, "status": result["status"],
-                      "duration_ms": 0, "detail": result.get("detail", "")})
+                      "duration_ms": result.get("duration_ms", 0),
+                      "detail": result.get("detail", "")})
     summary = {k: sum(1 for c in cases if c["status"] == k)
                for k in ("passed", "failed", "skipped", "xfail")}
+    target = os.environ.get("URC_CTS_TARGET") or (
+        "mock" if os.environ.get("URC_CTS_MOCK_BIN") else "ref-server")
     payload = {"schema": "urc-cts-report/v1", "suite": "dynamic",
-               "target": os.environ.get("URC_CTS_TARGET", "ref-server"),
+               "target": target,
                "started_at": str(session.startpath), "cases": cases, "summary": summary}
     out = os.environ.get("URC_CTS_REPORT")
     if out:

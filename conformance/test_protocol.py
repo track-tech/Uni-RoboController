@@ -117,9 +117,29 @@ def test_wire_contract_hardcoded():
     assert messages.pack_session_ctrl(4).hex() == "04000000"
     assert messages.pack_event(0x0001, 0, "").hex() == "01000000"
     assert messages.pack_error(0x0101, "").hex() == "010100"
-    assert struct.pack("<Q", 7) == struct.pack("<Q", 7)
     assert len(messages.pack_feedback(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)) == 36
     assert frame.Frame(0x17, b"\x00\x00\x00\x00").payload == b"\x00\x00\x00\x00"
+
+
+def test_hello_ack_rate_limited(server):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("127.0.0.1", 0))
+    sock.settimeout(0.05)
+    hello = messages.pack_hello(1, 0, 0, 0, b"cts-client-00001", os.urandom(16), "cts")
+    raw = frame.pack(frame.Frame(frame.T_HELLO, hello, session_id=0, seq=1, ts_us=1))
+    for _ in range(30):
+        sock.sendto(raw, server.addr)
+    acks = 0
+    end = time.monotonic() + 0.8
+    while time.monotonic() < end:
+        try:
+            data, _ = sock.recvfrom(2048)
+        except socket.timeout:
+            continue
+        if len(data) > 5 and data[5] == frame.T_HELLO_ACK:
+            acks += 1
+    sock.close()
+    assert acks <= 12, f"HELLO_ACK rate limit broken: {acks}"
 
 
 # ---------- 发现 / 配对 ----------
@@ -162,6 +182,11 @@ def test_auth_lockout_per_source(server):
         client.recv()
     assert exc.value.code == ERR_LOCKED
     assert _wait_stats(server, "auth_fail", 5).get("auth_fail", 0) >= 5
+    # 锁定按来源隔离：另一个源端口仍可认证
+    other = UrcClient(server.secret, server.addr)
+    other.hello()
+    other.auth()
+    other.close()
     client.close()
 
 
@@ -174,11 +199,12 @@ def test_unauthenticated_control_rejected(server):
         (frame.T_CTRL, messages.pack_ctrl(0, [16384, 0, 0, 0], [0], 1)),
         (frame.T_ESTOP, messages.pack_estop(1, 1)),
         (frame.T_PING, struct.pack("<Q", 1)),
+        (frame.T_AUTH, messages.pack_auth(os.urandom(32), b"cts-client-00001", "cts")),
     ]):
         _raw_send(server, ftype, payload, seq=idx + 1)
         time.sleep(0.01)
-    stats = _wait_stats(server, "gate_drop", 5)
-    assert stats.get("gate_drop", 0) >= 5
+    stats = _wait_stats(server, "gate_drop", 6)
+    assert stats.get("gate_drop", 0) >= 6
     assert stats.get("estop", 0) == 0
     client = _client(server)
     client.connect()
@@ -210,7 +236,13 @@ def test_session_timeout_and_estop_latch(make_server):
     c1.connect()
     c1.send_estop()
     _recv_event(c1, EVT_ESTOP_ACKED)
-    time.sleep(1.0)
+    time.sleep(0.7)
+    # 超时前服务端加密发送 EVENT 0x0004，然后清密钥
+    try:
+        _recv_event(c1, EVT_SESSION_EXPIRED, timeout=0.8)
+    except TimeoutError:
+        pass
+    time.sleep(0.4)
     stats = _wait_stats(server, "sessions_expired", 1)
     assert stats.get("sessions_expired", 0) >= 1
     # 旧会话帧不再被接受
@@ -271,12 +303,20 @@ def test_ttl_expired_frame_dropped(make_server):
 
 
 @pytest.mark.cts_id("CTS-C-03")
-def test_out_of_range_rejected(server):
+def test_out_of_range_and_bad_mode_rejected(server):
     client = _client(server)
     client.connect()
     client.send_ctrl([32767, 0, 0, 0])  # scale=2.0 > range 1.5
     _expect_error(client, ERR_RANGE)
     assert _wait_stats(server, "invalid_ctrl", 1).get("invalid_ctrl", 0) >= 1
+    assert abs(_wait_telem(client, lambda t: abs(t.x) < 1e-6).x) < 1e-6
+    # 未知 mode：必须拒绝 + 计数，且不得运动
+    client.arm()
+    client.send_ctrl([16384, 0, 0, 0], mode=99)
+    _expect_error(client, ERR_RANGE)
+    stats = _wait_stats(server, "invalid_ctrl", 2)
+    assert stats.get("invalid_ctrl", 0) >= 2
+    assert abs(_wait_telem(client, lambda t: abs(t.x) < 1e-6).x) < 1e-6
     client.arm()
     client.send_ctrl([16384, 0, 0, 0])
     assert _wait_telem(client, lambda t: t.x > 0.5).x > 0.5
@@ -291,10 +331,12 @@ def test_watchdog_zero_and_requires_arm(server):
     client.connect()
     client.send_ctrl([16384, 0, 0, 0])
     assert _wait_telem(client, lambda t: t.x > 0.5).x > 0.5
+    stop_start = time.monotonic()
     _recv_event(client, EVT_WATCHDOG, timeout=2.0)
     stats = _wait_stats(server, "watchdog", 1)
     assert stats.get("watchdog", 0) >= 1
     assert abs(_wait_telem(client, lambda t: abs(t.x) < 1e-6).x) < 1e-6
+    assert time.monotonic() - stop_start <= 0.5  # ≤400 ms 停（加调度余量）
     client.send_ctrl([16384, 0, 0, 0])  # 未重新 arm，不得生效
     assert abs(_wait_telem(client, lambda t: abs(t.x) < 1e-6).x) < 1e-6
     client.arm()
@@ -324,9 +366,21 @@ def test_estop_latch_and_two_step_reset(server):
 
 
 @pytest.mark.cts_id("CTS-S-05")
-def test_replay_tamper_rejected(server):
+def test_replay_tamper_rejected(make_server):
+    server = make_server(camera=True)
     client = _client(server)
     client.connect()
+    # Agent→App 全局 seq：TELEM + VIDEO 跨流共 ≥20 帧且严格递增
+    seen = 0
+    end = time.monotonic() + 3.0
+    while time.monotonic() < end and seen < 20:
+        f = client.recv(timeout=end - time.monotonic())
+        if f is not None and f.type in (frame.T_TELEM, frame.T_VIDEO):
+            seen += 1
+            if f.type == frame.T_VIDEO:
+                break
+    assert seen > 0
+    assert client.agent_seq_ok
     client.send_ctrl([16384, 0, 0, 0])
     assert _wait_telem(client, lambda t: t.x > 0.5).x > 0.5
     # 跨流重放：同一方向全局 seq，CTRL 与 FEEDBACK 复用 seq
@@ -348,7 +402,16 @@ def test_replay_tamper_rejected(server):
     client.send_raw(_tampered(raw))
     time.sleep(0.1)
     assert _wait_stats(server, "aead_fail", 1).get("aead_fail", 0) >= 1
-    client.tx_seq = seq2
+    # CRC 错但密文未改：必须丢弃，不得执行
+    seq3 = (seq2 + 1) & 0xFFFFFFFF
+    raw = frame.pack(frame.Frame(frame.T_CTRL, messages.pack_ctrl(0, [32767, 0, 0, 0], [0], 1),
+                                 session_id=client.session_id, seq=seq3), client.ctx, to_robot=True)
+    bad_crc = bytearray(raw)
+    bad_crc[40] ^= 0xFF  # 改载荷，不重算 CRC
+    client.send_raw(bytes(bad_crc))
+    time.sleep(0.1)
+    assert _wait_stats(server, "aead_fail", 2).get("aead_fail", 0) >= 2
+    client.tx_seq = seq3
     client.send_ctrl([16384, 0, 0, 0])
     assert _wait_telem(client, lambda t: t.x > 0.5).x > 0.5
     # Agent→App 全局 seq 单调

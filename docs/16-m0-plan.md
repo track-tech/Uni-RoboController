@@ -105,6 +105,8 @@ mock_robot --bind 0.0.0.0 --ctrl-port 47800 --discovery-port 47810 \
 
 - 广播 `ANNOUNCE`；AUTH 5 次失败锁 30 s；单控制者；CTRL TTL 200 ms；看门狗 300 ms；
   ESTOP 锁存；TELEM 20 Hz；MODEL_STATE 30 Hz（16 关节正弦）；测试图 10 Hz（VIDEO 分片）。
+- M0 mock 仅支持 **rgb888** capability：`streams[0].codecs` 必须含 `rgb888`，否则拒绝启动
+  （避免 CAPS 声明 H.264/720p、实发 rgb888 160×120 的不一致）；H.264/FEC 在 M2 实现。
 - 故障注入开关可组合，行为可断言（供 CTS F 组使用）。
 
 ### 4.2 最小参考 Agent（骨架，M0 只到“能连能控”）

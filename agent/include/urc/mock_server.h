@@ -54,6 +54,9 @@ struct Capability {
     std::vector<std::string> joint_order;
     std::vector<Channel> channels;
     std::vector<uint8_t> mode_ids;
+    int video_w = 160;
+    int video_h = 120;
+    int video_fps = 10;
 };
 
 struct MockStats {
@@ -138,6 +141,8 @@ private:
     std::map<uint64_t, uint32_t> auth_failures_;
     std::map<uint64_t, uint64_t> lock_until_ms_;
     std::map<uint64_t, std::vector<uint64_t>> error_times_;
+    std::map<uint64_t, std::vector<uint64_t>> hello_times_;
+    std::vector<uint64_t> announce_times_;
 
     std::vector<float> axes_;
     std::array<uint16_t, 2> buttons_{};

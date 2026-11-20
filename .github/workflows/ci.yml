@@ -169,7 +169,8 @@ jobs:
                      cmake --build agent/build-arm64 -j2 && \
                      ctest --test-dir agent/build-arm64 --output-on-failure && \
                      ./agent/build-arm64/mock_robot --help >/dev/null && \
-                     python3 -c \"import json; json.dump({'schema':'urc-cts-report/v1','suite':'arch','target':'qemu-aarch64','started_at':'ci','cases':[{'id':'CTS-K-01','status':'passed','duration_ms':0,'detail':'urc_vectors'}],'summary':{'passed':1,'failed':0,'skipped':0,'xfail':0}}, open('artifacts/arch-report.json','w'))\""
+                     python3 tools/gen_arch_report.py --bin agent/build-arm64/urc_vectors \
+                       --vectors protocol/vectors --out artifacts/arch-report.json"
       - name: Check arch report
         run: python tools/check_cts_report.py --suite arch --arch artifacts/arch-report.json
       - if: always()

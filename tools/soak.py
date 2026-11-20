@@ -122,13 +122,13 @@ def main() -> int:
     except KeyboardInterrupt:
         pass
     elapsed = time.monotonic() - start
+    rss, fds = proc_metrics(proc.pid)
     proc.send_signal(signal.SIGTERM)
     try:
         code = proc.wait(timeout=10)
     except subprocess.TimeoutExpired:
         proc.kill()
         code = proc.wait(timeout=5)
-    rss, fds = proc_metrics(proc.pid)
     stats = {}
     try:
         import json
@@ -139,10 +139,18 @@ def main() -> int:
               "baseline": baseline, "stats": stats}
     Path(args.report).parent.mkdir(parents=True, exist_ok=True)
     Path(args.report).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"[soak] done exit={code} report={args.report}", flush=True)
+    print(f"[soak] done exit={code} rss={rss}KB fds={fds} report={args.report}", flush=True)
     if args.bin and code != 0:
         print("[soak] FAIL: mock did not exit 0 on SIGTERM", flush=True)
         return 1
+    if baseline:
+        allowed_kb = max(1024, int(1024 * elapsed / 3600))
+        if rss - baseline[0] > allowed_kb:
+            print(f"[soak] FAIL: RSS grew {rss - baseline[0]}KB > {allowed_kb}KB", flush=True)
+            return 1
+        if fds - baseline[1] > 2:
+            print(f"[soak] FAIL: fd grew {fds - baseline[1]}", flush=True)
+            return 1
     return 0
 
 

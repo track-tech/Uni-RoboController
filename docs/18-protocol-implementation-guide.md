@@ -63,6 +63,7 @@ Level 4 增强档：深度/点云/地图/关节命令（按需，1–4 周）
 - **看门狗 300 ms → 零速**；**E-stop 锁存**；复位两步：`release_estop` 只清锁存，`arm` 重新使能；
   `ESTOP(reason=0)` 不清锁存；**仲裁优先级：硬件急停 > RC > 网络 > 自主**。
 - 能力协商：`CAPS` 哈希、`client_caps` 降级、`joint_order_hash` 校验；不一致时拒绝运动渲染/关节命令。
+- M0 mock 仅支持 rgb888 capability（否则拒绝启动）；非 rgb888 形态的 H.264/FEC 在 M2 实现。
 
 ### 4.2 视频
 
@@ -164,7 +165,9 @@ python -m pytest conformance -m dynamic -q
 
 - `URC_CTS_REQUIRE_EXTERNAL=1`：缺少 target/mock 直接失败，不允许静默回退 Python ref。
 - `URC_CTS_MOCK_BIN` 模式按用例启动/停止 mock；注入用例通过 fixture 附加 `--hold-next-ms`/`--corrupt-aead` 等参数。
-- `cts-report.json` 由 conftest hook 生成（路径 `URC_CTS_REPORT` 可覆盖），CI 断言 P0 ID 集合、全 passed、skipped=0、xfail=0。
+- `cts-report.json` 由 conftest hook 生成（路径 `URC_CTS_REPORT` 可覆盖），CI 断言 P0 ID 集合、全 passed、skipped=0、xfail=0；
+  `target` 字段必须区分 `ref-server`/`mock`/外部 target，`duration_ms` 记录真实耗时。
+- 跨架构 `arch-report.json` 由 `tools/gen_arch_report.py` 运行 `urc_vectors` 后生成（不得手写 passed）。
 - 安全组默认只读/短时；涉及运动的用例必须显式 `--allow-motion`（对 mock/台架），防误伤实机。
 
 ### 6.4 通过标准

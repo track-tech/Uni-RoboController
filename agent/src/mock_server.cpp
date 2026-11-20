@@ -29,7 +29,6 @@ constexpr uint16_t kEvtArmed = 0x0003;
 constexpr uint16_t kEvtSessionExpired = 0x0004;
 constexpr uint16_t kEvtEstopReleased = 0x0005;
 constexpr uint16_t kErrAuth = 0x0101;
-constexpr uint16_t kErrSession = 0x0102;
 constexpr uint16_t kErrRole = 0x0103;
 constexpr uint16_t kErrRange = 0x0301;
 constexpr uint16_t kErrEstop = 0x0302;
@@ -120,6 +119,10 @@ bool MockServer::load_capability(std::string& error) {
     cap_.joint_hash = crc32c(std::span<const uint8_t>(
         reinterpret_cast<const uint8_t*>(joined.data()), joined.size()));
     cap_.channels.clear();
+    cap_.mode_ids.clear();
+    for (const auto& mode : j["control"]["modes"]) {
+        cap_.mode_ids.push_back(static_cast<uint8_t>(mode["id"].get<int>()));
+    }
     const auto& mode = j["control"]["modes"][0];
     for (const auto& ch : mode["channels"]) {
         Channel c;
@@ -128,6 +131,25 @@ bool MockServer::load_capability(std::string& error) {
         c.hi = ch["range"][1].get<float>();
         c.scale = ch.contains("scale") ? ch["scale"].get<float>() : std::max(std::abs(c.lo), std::abs(c.hi));
         cap_.channels.push_back(c);
+    }
+    // S1 mock 只发 RGB888 测试图；capability 必须如实声明，否则拒绝启动（避免 CAPS↔实发不一致）
+    bool rgb_ok = false;
+    if (j.contains("streams") && !j["streams"].empty()) {
+        const auto& stream = j["streams"][0];
+        for (const auto& codec : stream["codecs"]) {
+            if (codec.get<std::string>() == "rgb888") rgb_ok = true;
+        }
+        if (rgb_ok && stream.contains("res") && stream["res"].size() >= 2) {
+            cap_.video_w = stream["res"][0].get<int>();
+            cap_.video_h = stream["res"][1].get<int>();
+        }
+        if (rgb_ok && stream.contains("fps") && !stream["fps"].empty()) {
+            cap_.video_fps = stream["fps"][0].get<int>();
+        }
+    }
+    if (!rgb_ok) {
+        error = "S1 mock only supports a capability with a rgb888 stream";
+        return false;
     }
     return true;
 }
@@ -266,7 +288,8 @@ void MockServer::send_model() {
 }
 
 void MockServer::send_video() {
-    constexpr int w = 160, h = 120;
+    const int w = cap_.video_w;
+    const int h = cap_.video_h;
     std::vector<uint8_t> data(static_cast<size_t>(w) * h * 3);
     for (int y = 0; y < h; ++y) {
         for (int x = 0; x < w; ++x) {
@@ -306,6 +329,12 @@ void MockServer::handle_discovery(const net::Datagram& datagram) {
                    static_cast<uint32_t>(data[data.size() - 2]) << 16 |
                    static_cast<uint32_t>(data[data.size() - 1]) << 24;
     if (crc32c(std::span<const uint8_t>(data.data(), data.size() - 4)) != crc) return;
+    uint64_t now = monotonic_ms();
+    announce_times_.erase(std::remove_if(announce_times_.begin(), announce_times_.end(),
+                                         [now](uint64_t t) { return now - t > 1000; }),
+                          announce_times_.end());
+    if (announce_times_.size() >= 20) return;  // ANNOUNCE ≤20/s（全局）
+    announce_times_.push_back(now);
     Announce ann;
     ann.robot_id = cap_.robot_id;
     ann.robot_name = cap_.name;
@@ -377,14 +406,25 @@ void MockServer::handle_plain(const Frame& frame, const net::Address& from) {
 }
 
 void MockServer::on_hello(const Frame& frame, const net::Address& from) {
+    uint64_t now = monotonic_ms();
+    auto& hellos = hello_times_[from.key()];
+    hellos.erase(std::remove_if(hellos.begin(), hellos.end(),
+                                [now](uint64_t t) { return now - t > 1000; }),
+                 hellos.end());
+    if (hellos.size() >= 10) return;  // HELLO_ACK ≤10/s/来源
+    hellos.push_back(now);
     if (claimed_ && (!has_peer_ || !(peer_ == from))) {
-        send_error(kErrRole, "controller occupied", from, false);
+        send_error(kErrRole, "controller occupied", from, true);
         return;
     }
     Hello hello;
     try {
         hello = unpack_hello(frame.payload);
     } catch (const std::exception&) {
+        return;
+    }
+    if (hello.proto_major != 1) {
+        send_error(0x0201, "protocol major mismatch", from, true);
         return;
     }
     reset_session(true);
@@ -423,7 +463,7 @@ void MockServer::on_auth(const Frame& frame, const net::Address& from) {
         return;
     }
     if (!pending_ || !has_peer_ || !(peer_ == from) || frame.session_id != session_id_) {
-        send_error(kErrSession, "no pending session", from, false);
+        ++stats_.gate_drop;  // 无 pending / 来源不符 / 会话不符：静默丢弃并计数
         return;
     }
     Auth auth;
@@ -511,6 +551,7 @@ void MockServer::on_session_ctrl(const Frame& frame) {
             send_event(kEvtArmed, 0, "armed");
             break;
         case kActReleaseEstop:
+            if (!estop_latched_) return;  // 未锁存时 no-op
             estop_latched_ = false;
             armed_ = false;
             watchdog_fired_ = false;
@@ -539,6 +580,11 @@ void MockServer::on_ctrl(const Frame& frame) {
     if (ctrl.axes.size() != cap_.channels.size()) {
         ++stats_.invalid_ctrl;
         send_error(kErrRange, "bad axis count");
+        return;
+    }
+    if (std::find(cap_.mode_ids.begin(), cap_.mode_ids.end(), ctrl.mode) == cap_.mode_ids.end()) {
+        ++stats_.invalid_ctrl;
+        send_error(kErrRange, "bad mode");
         return;
     }
     if ((ctrl.flags & 0x01) == 0) {
@@ -635,7 +681,7 @@ void MockServer::tick() {
             send_model();
         }
         if (now >= next_video_ms_ && !config_.no_camera) {
-            next_video_ms_ = now + 100;
+            next_video_ms_ = now + 1000 / std::max(1, cap_.video_fps);
             send_video();
         }
     }

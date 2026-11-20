@@ -58,6 +58,16 @@ class ReferenceServer:
         self.joint_hash = joint_order_hash(self.joint_order) if self.joint_order else 0
         self.modes = {m["id"]: m for m in self.cap["control"]["modes"]}
         self.channels = self.cap["control"]["modes"][0].get("channels", [])
+        self.video_w, self.video_h, self.video_fps = 160, 120, 10
+        streams = self.cap.get("streams") or []
+        if not streams or "rgb888" not in (streams[0].get("codecs") or []):
+            raise SystemExit("S1 ref server requires a capability with a rgb888 stream")
+        res = streams[0].get("res") or [160, 120]
+        self.video_w, self.video_h = int(res[0]), int(res[1])
+        fps = streams[0].get("fps") or [10]
+        self.video_fps = int(fps[0])
+        self.hello_times: dict[tuple, list[float]] = {}
+        self.announce_times: list[float] = []
         self.secret = self._load_secret()
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -217,6 +227,11 @@ class ReferenceServer:
                 messages.unpack_discover(data)
             except ValueError:
                 continue
+            now = time.monotonic()
+            self.announce_times = [t for t in self.announce_times if now - t < 1.0]
+            if len(self.announce_times) >= 20:
+                continue  # ANNOUNCE ≤20/s（全局）
+            self.announce_times.append(now)
             ann = messages.Announce(
                 self.cap["robot_id"], self.cap.get("name", "robot"), self.cap["form"],
                 self.args.ctrl_port, 0, 0, 0, self.args.web_port,
@@ -241,6 +256,12 @@ class ReferenceServer:
             self.estop_latched = False
 
     def on_hello(self, f: frame.Frame, addr) -> None:
+        now = time.monotonic()
+        times = [t for t in self.hello_times.get(addr, []) if now - t < 1.0]
+        if len(times) >= 10:
+            return  # HELLO_ACK ≤10/s/来源
+        times.append(now)
+        self.hello_times[addr] = times
         if self.claimed and self.peer != addr:
             self.send_error(ERR_ROLE, "controller occupied", addr=addr)
             return
@@ -269,7 +290,8 @@ class ReferenceServer:
             self.send_error(ERR_LOCKED, "auth locked", addr=addr)
             return
         if not self.pending or self.peer != addr or f.session_id != self.session_id:
-            self.send_error(ERR_SESSION, "no pending session", addr=addr)
+            # 无 pending / 来源不符 / 会话不符：静默丢弃并计数（明文例外集只允许指定错误码）
+            self.stats["gate_drop"] += 1
             return
         auth = messages.unpack_auth(f.payload)
         want = crypto.auth_proof(self.secret, self.app_nonce, self.robot_nonce, self.session_id)
@@ -384,9 +406,8 @@ class ReferenceServer:
             self.last_valid_ctrl = time.monotonic()
             self.send_event(EVT_ARMED, 0, "armed")
         elif action == ACT_RELEASE_ESTOP:
-            if not self.authenticated:
-                self.stats["gate_drop"] += 1
-                return
+            if not self.estop_latched:
+                return  # 未锁存时 no-op
             self.estop_latched = False
             self.armed = False
             self.watchdog_fired = False
@@ -481,7 +502,7 @@ class ReferenceServer:
         self.send(frame.T_MODEL_STATE, state, stream=frame.S_TELEMETRY)
 
     def send_video(self) -> None:
-        w, h = 160, 120
+        w, h = self.video_w, self.video_h
         data = bytearray(w * h * 3)
         for y in range(h):
             row = y * w * 3
@@ -530,7 +551,7 @@ class ReferenceServer:
                 self.next_model = now + 1.0 / 30.0
                 self.send_model()
             if now >= self.next_video and not self.args.no_camera:
-                self.next_video = now + 0.1
+                self.next_video = now + 1.0 / max(1, self.video_fps)
                 self.send_video()
         if self.args.stats_file and now >= self.next_flush:
             self.next_flush = now + 0.5
