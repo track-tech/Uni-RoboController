@@ -313,7 +313,7 @@ python tools/soak.py --bin agent/build/mock_robot --duration 1800 --drop 5 --rat
 
 ## 12.2 明文例外与 AUTH（关闭 R2-P0-2）
 
-明文仅允许：`HELLO`、`HELLO_ACK`、`AUTH`、`AUTH_OK`、认证前 `ERROR`（0x0101/0x0103/0x0602，≤2/s/来源）。
+明文仅允许：`HELLO`、`HELLO_ACK`、`AUTH`、`AUTH_OK`、认证前 `ERROR`（0x0101/0x0103/0x0201/0x0602，≤2/s/来源）。
 其余帧必须加密 + session 匹配 + 来源匹配，否则丢弃计数。
 
 AUTH 规则：

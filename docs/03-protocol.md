@@ -125,7 +125,7 @@ App                                   Agent
 ```
 
 - **明文例外集（唯一）**：`HELLO`、`HELLO_ACK`、`AUTH`、`AUTH_OK`，以及认证前的 `ERROR`
-  （仅 0x0101/0x0103/0x0602，且限速 ≤2 次/秒/来源）。其余所有帧必须已加密 + `session_id` 匹配 +
+  （仅 0x0101/0x0103/0x0201/0x0602，且限速 ≤2 次/秒/来源）。其余所有帧必须已加密 + `session_id` 匹配 +
   来源地址为当前会话；未认证的 claim/CTRL/ESTOP/release_estop 一律丢弃并计数，不得执行。
 - `AUTH` 只能针对本来源的 pending 会话：帧 `session_id` 必须等于该 pending 会话 ID；每次 pending 只接受一次
   AUTH（AUTH_OK 后不接受重复/重放 AUTH）；失败计数 per-来源。

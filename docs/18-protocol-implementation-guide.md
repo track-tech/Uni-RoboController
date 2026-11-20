@@ -56,7 +56,7 @@ Level 4 增强档：深度/点云/地图/关节命令（按需，1–4 周）
   （不是含实际 crc 的帧头；按后者实现会解密失败）。
 - HKDF 方向子密钥 + 12 B nonce（`dir+3B0+seq`）；**seq 每方向全局、跨流共享**；重放窗口每方向 2048；
   控制/遥测/地图必须加密。
-- 认证门 fail-closed：明文仅允许 HELLO/HELLO_ACK/AUTH/AUTH_OK 与认证前 ERROR（0x0101/0x0103/0x0602，限速）；
+- 认证门 fail-closed：明文仅允许 HELLO/HELLO_ACK/AUTH/AUTH_OK 与认证前 ERROR（0x0101/0x0103/0x0201/0x0602，限速）；
   其余帧必须已加密 + session 匹配 + 来源一致；未认证的 claim/CTRL/ESTOP/release/arm 一律丢弃并计数（gate_drop）。
 - 会话超时 5 s；认证失败 5 次锁 30 s；单控制者；观察者只读；claim 不等于 arm，必须显式 arm。
 - 控制帧 TTL 200 ms（接收侧排队时间）：过期丢弃；100 Hz 消费；重复帧去重；死手位为 0 时通道清零。

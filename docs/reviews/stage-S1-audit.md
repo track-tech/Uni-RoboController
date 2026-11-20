@@ -289,3 +289,96 @@ python -m pytest conformance -m dynamic -q
 | `F:\DSH_WS\urc-audit` | 工作区外仓库副本（robocopy，排除 `.git`/构建目录），g++ 16.2 重建 mock/向量 |
 
 > 说明：本审计未修改工作区代码/配置；工作区内仅新增本文件。
+
+---
+
+# 10. 复验记录（2026-11-21，HEAD `77fd355`）
+
+> 本节为针对 §7 缺陷修复的**窄范围复验**；上文 §1–§9 的 FAIL 记录与证据保留不变。
+> 复验对象：`77fd355 fix(s1): 修复审计P0/P1并触发浸泡复验 [soak]`（工作区干净，`git status` 无输出；本地 HEAD = origin/main = `77fd3559`）。
+> 复验方式：只读审查修复 diff + 复跑全部基线套件 + 工作区外副本（`F:\DSH_WS\urc-audit2`）g++ 重建并注入定点 mutant + 语义探针（`mut/probe_verify.py`）。
+
+## 10.1 复验命令与结果
+
+| 项 | 命令/方式 | 结果 |
+|---|---|---|
+| 静态四件套 | `check_links/check_kmp_ready/check_caps/gen_vectors --check` | 全部 exit 0（`links ok`、5 capability OK、5 向量文件 OK） |
+| Python ref CTS | `URC_CTS_REPORT=conformance\cts-report.json; python -m pytest conformance -q` | **25 passed**（原 24 + 新增 HELLO_ACK 限速用例），`check_cts_report` OK；报告 `target=ref-server`、14/14 用例 `duration_ms>0` |
+| C++ mock CTS | 同 §3.3，`URC_CTS_MOCK_BIN=urc-audit2\agent\mut-build\mock_robot.exe`（由 `77fd355` 源码 g++ 重建） | **连续 2 次 17 passed**（原 16 + 限速用例）；报告 `target=mock`、14/14 `duration_ms>0`、11 P0 全 passed、skipped/xfail=0，`check_cts_report` OK |
+| C++ 向量 | `urc_vectors.exe protocol/vectors` | `checks=167 failures=0`，exit 0 |
+| arch 报告工具 | `python tools/gen_arch_report.py --bin <新urc_vectors> --vectors protocol/vectors --out ...` + `check_cts_report --suite arch` | 报告由真实运行结果生成（`checks=167 failures=0`），`CTS report OK`，exit 0（原 P2-05 硬编码报告已修） |
+| 稳定性 | 新增/改动用例（hello_ack_rate/CTS-C-03/CTS-S-02/CTS-S-05/CTS-P-01）连续跑 3 次 | 3/3 全绿（5 passed/次） |
+
+## 10.2 定点变异复验（工作区外副本，g++ 重建）
+
+驱动：`F:\DSH_WS\urc-audit2\mut\mut2.py` → `mut2-result.json`。
+
+| ID | 注入点（针对修复后代码） | 判定测试 | 结果 |
+|---|---|---|---|
+| R1 | 删除新增的 `mode_ids` 校验（`mock_server.cpp` on_ctrl） | CTS-C-03（`-k out_of_range_and_bad_mode`） | **CAPTURED**：`expected error 0x0301, got None` → P0-01 修复可证伪 |
+| R2 | 关闭 CRC 校验（`frame.cpp`） | CTS-S-05（`-k replay_tamper`） | **NOT CAUGHT（exit 0）** → P1-04 仍不可证伪（见 10.4/10.5） |
+| R3 | 删除会话超时 `EVENT 0x0004`（`mock_server.cpp` tick） | CTS-S-02（`-k session_timeout`） | **NOT CAUGHT（exit 0）** → P1-03 断言被 try/except 吞掉 |
+| R4 | 关闭 VIDEO 发送（`send_video` 立即 return） | CTS-S-05（`-k replay_tamper`） | **CAPTURED**（但失败原因是 `TimeoutError: timeout waiting type 0x07`，属看门狗时序副作用，非 seq 断言；见新 P2-13） |
+| R5 | 关闭 HELLO_ACK 限速 | `-k hello_ack_rate` | **CAPTURED**：`assert 30 <= 12` → P1-02 修复可证伪 |
+
+## 10.3 语义探针复验（ref 与 mock 对照）
+
+脚本：`F:\DSH_WS\urc-audit2\mut\probe_verify.py` → `probe2-result.json`。
+
+| 探针 | ref | mock | 结论 |
+|---|---|---|---|
+| 未知 `CTRL.mode=99` + 合法轴值 | ERROR 0x0301，`invalid_ctrl=1`，x 保持 0.5 | 同 | **P0-01 行为已修** |
+| 无 pending 明文 AUTH | 静默无响应，`gate_drop=1` | 同 | **P1-01 已修** |
+| 30 个 HELLO 突发 | **10 个 HELLO_ACK** | **10 个** | **P1-02 已修**（≤10/s） |
+| 40 个 DISCOVER 突发 | **20 个 ANNOUNCE** | **19 个** | **P1-02 已修**（≤20/s；测试仅覆盖 HELLO_ACK，见新 P2-16） |
+| 会话超时（500 ms） | 收到 EVENT 0x0004 | 同 | **P1-03 实现正确，但 CTS 断言可选（未关闭）** |
+| 5 次错误 AUTH 后另一来源认证 | 正常认证 | 同 | **P1-05 已修** |
+| 四足 CAPS↔视频 | rgb888 160×120，`frame_bytes=57600` 一致 | 同 | **P1-06 四足一致性已修** |
+| 非 rgb888 capability（mock_arm） | 拒绝启动并打印原因 | 同 | **P1-06 以“仅支持 rgb888”收口，docs 16/18 已注明** |
+
+## 10.4 P0/P1 关闭表
+
+| 原 ID | 修复内容 | 复验判定 | 依据 |
+|---|---|---|---|
+| **P0-01** 未知 mode 假绿 | mock 校验 `mode_ids`；CTS-C-03 改名并加 `mode=99` 断言 | **已关闭 ✅** | 探针 + CTS-C-03 + mutant R1 |
+| P1-01 明文 0x0102 / AUTH 重放未计数 | 无 pending/来源/会话不符改为静默 `gate_drop++`；P-02 加 AUTH 计数断言 | **已关闭 ✅** | 探针（无响应、gate_drop=1）+ 代码 review + CTS-P-02 |
+| P1-02 HELLO_ACK/ANNOUNCE 限速 | ref/mock 增加每来源/全局 1 s 窗口限速 | **已关闭 ✅**（ANNOUNCE 无 CTS 用例，仅探针） | 探针 10/20 + 新测试 + mutant R5 |
+| P1-03 S-02 未断言 EVENT 0x0004 | 新增 `_recv_event(EVT_SESSION_EXPIRED)`，但包在 `try/except TimeoutError: pass` | **未关闭 ❌（测试不可证伪）** | mutant R3 不被捕获；`test_protocol.py:241-244` |
+| P1-04 CRC 负例缺失 | 新增“CRC 错”帧：`bad_crc[40] ^= 0xFF`（未重算 CRC） | **未关闭 ❌（负例构造错误）** | mutant R2 不被捕获；`test_protocol.py:405-413` 翻转的是**密文字节**，AEAD 同时失效，关闭 CRC 后仍被 AEAD 拒绝；注释“密文未改”与实现不符 |
+| P1-05 P-01 缺“仅该来源锁定” | 增加另一来源 hello/auth | **已关闭 ✅** | CTS-P-01 + 探针 |
+| P1-06 非四足 CAPS↔视频漂移 | ref/mock 要求 rgb888 capability（否则拒绝启动），视频按 caps res/fps；docs 16/18 注明 | **已关闭 ✅（范围收口）** | 探针 + 文档 diff；H.264 留待 M2 |
+| P1-07 soak 证据不可核验 | `tools/soak.py` 采样前移 + RSS/fd 阈值判据已提交；新 run 含 30 min soak | **部分关闭 ⏳（待 CI/soak 证据）** | 代码 review 通过；run 44791424581 的 mock-soak 复验时仍 in_progress；artifact 匿名不可下载；且 §6.3 的 watchdog 误触发 / `dropped_tx≈5%±20%` 仍未自动断言（新 P2-15） |
+| P1-08 其它 CTS 缺口 | S-03 加停时断言；S-05 加 TELEM/VIDEO 帧收集 | **部分关闭 ⏳** | S-03 已加（阈值 0.5 s，`test_protocol.py:334-340`）；S-05 实际只 `assert seen > 0` 且在首个 VIDEO 即 break，未断言 ≥20 帧（`test_protocol.py:373-383`）；VIDEO-off mutant 被捕获属看门狗副作用（R4） |
+
+P2 复核：P2-01（target/duration）、P2-02（occupied HELLO 限速）、P2-05（arch 报告工具）、P2-06（proto_major 校验）、P2-07（release_estop no-op）、P2-10（`.cts-tmp` 清理）、P2-11（工作区干净、证据绑 commit）、P2-12（mode_ids）**已关闭**；P2-03（`--verbose`）、P2-08（TTL 注入语义）、P2-09（URCPAIR 秘密打印）**仍未处理（P2 可延后）**；P2-04 部分处理（删除了 `struct.pack` 同义反复，`Frame.payload` 回读断言仍在）。
+
+## 10.5 新发现（复验引入/暴露）
+
+| ID | 级别 | 问题 | 证据/建议 |
+|---|---|---|---|
+| **新 P1-A（对应 P1-03/P1-04 汇总）** | P1 | 两处“已修复”断言实际不可证伪：S-02 的 EVENT 断言被 `except TimeoutError: pass` 吞掉；S-05 的 CRC 负例翻转的是密文字节（`test_protocol.py:409-410`），CRC-off mutant 仍可通过 | mutant R2/R3 均 NOT CAUGHT。修法：去掉 try/except；CRC 负例改为**只改 CRC 字段**（如 `raw[28]^=0xFF`，不动密文）或重加密后改 CRC，并断言 `aead_fail` 不增/帧被丢弃且不执行 |
+| **新 P2-13** | P2 | 新 S-05 在 `connect()`（已 arm）后先收集最多 3 s 帧再发 CTRL；若首帧 VIDEO 晚于看门狗 300 ms，看门狗触发导致后续 `x>0.5` 断言超时 → CI 慢机 flaky 风险（R4 的失败即此路径） | 收集期间保持发合法 CTRL 刷新看门狗，或收集后重新 arm；同时把断言改为 `seen>=20` 且至少 1 帧 VIDEO |
+| **新 P2-14** | P2 | `proto_major != 1` 回**明文** ERROR 0x0201，超出冻结明文例外集（03 §4.1 仅 0x0101/0x0103/0x0602）；ref 原有、本次 mock 新增，CTS 无覆盖 | `mock_server.cpp:426-428`、`ref_server.py:269-270`。需回写 docs 02/03/brief（把 0x0201 加入例外集）或改用允许码 |
+| **新 P2-15** | P2 | soak 判据口径偏松/不全：`allowed_kb = max(1024, 1024*elapsed/3600)` 在 30 min 时允许 1 MB（≈2 MB/h），约为 §6.3“<1 MB/h”的 2 倍；且未断言 watchdog 不误触发、`dropped_tx≈注入比例±20%` | `tools/soak.py:146-152`；§6.3 |
+| **新 P2-16** | P2 | 新增限速测试仅覆盖 HELLO_ACK（阈值 `<=12`，略宽于 10/s），ANNOUNCE ≤20/s 只有探针验证、无 CTS 用例 | `test_protocol.py:124-146` |
+
+## 10.6 CI / soak 状态（run #13 `44791424581`，HEAD `77fd355`）
+
+复验时（2026-11-21 02:29 +08 / 18:29Z）核对 GitHub API：
+
+| job | 状态 |
+|---|---|
+| lint / vectors / cts / mock-integration / mock-asan / agent-x86_64 / agent-aarch64 | **7/7 success**（18:18–18:22Z 完成） |
+| mock-soak | **in_progress**（30 min soak 18:18:28Z 开始，预计 ~18:48Z；artifact `soak-report.json` 尚未生成上传） |
+
+- **结论：soak 证据“待证据”**，不假设通过；新 run 的 soak 使用已提交的修复版 `tools/soak.py`（RSS/fd 前置采样 + 阈值判据），需在 job 完成后核对：8/8 job success、`soak-report.json` 的 `exit_code=0`、`rss_kb/fds/baseline` 数值合理（非 0）、job 日志含 `[soak] t=...` 周期采样的 RSS 走势。
+- 匿名无法下载 artifact/日志的权限限制同 §3.5；复验未能直接读取 `soak-report.json` 内容。
+
+## 10.7 复验结论
+
+**复验结论：FAIL（暂不关闭；P0 已关闭，2 项 P1 的测试可证伪性未达标，soak 证据待补）。**
+
+- **P0：已清零**。P0-01 行为、CTS 断言、mutant 三层验证均通过；静态/ref CTS/mock CTS/向量/CI 基线全绿。
+- **判定 FAIL 的唯一原因是“验收不可信”类 P1 未真正关闭**：P1-03（EVENT 断言可选）与 P1-04（CRC 负例构造错误）各只需 2–5 行测试修补，**不涉及实现回退**；P1-07 需等 soak job 完成并核对报告；P1-08 的 VIDEO seq 断言弱于冻结要求。
+- 关闭条件（很小）：① 删除 S-02 的 try/except，使 EVENT 0x0004 断言强制；② CRC 负例只改 CRC 字段/不动密文，并让 CRC-off mutant 被 CTS 捕获；③ 用 run #13 完成证据核对 soak（8 job 全绿 + 报告判据）；④ 建议顺手修新 P2-13（避免 S-05 flaky）并在 PR 中标注新 P2-14/15/16 的接受/延期决定。
+- 满足 ①②③ 后建议直接判定 **PASS（narrow re-audit）**；本轮不重开 P0，不要求重跑 30 min soak（除非 ② 改动影响 mock 行为——不会）。

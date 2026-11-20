@@ -139,7 +139,7 @@ def test_hello_ack_rate_limited(server):
         if len(data) > 5 and data[5] == frame.T_HELLO_ACK:
             acks += 1
     sock.close()
-    assert acks <= 12, f"HELLO_ACK rate limit broken: {acks}"
+    assert acks <= 11, f"HELLO_ACK rate limit broken: {acks}"
 
 
 # ---------- 发现 / 配对 ----------
@@ -237,12 +237,9 @@ def test_session_timeout_and_estop_latch(make_server):
     c1.send_estop()
     _recv_event(c1, EVT_ESTOP_ACKED)
     time.sleep(0.7)
-    # 超时前服务端加密发送 EVENT 0x0004，然后清密钥
-    try:
-        _recv_event(c1, EVT_SESSION_EXPIRED, timeout=0.8)
-    except TimeoutError:
-        pass
-    time.sleep(0.4)
+    # 超时前服务端加密发送 EVENT 0x0004，然后清密钥（必须可证伪，不得吞掉）
+    _recv_event(c1, EVT_SESSION_EXPIRED, timeout=2.0)
+    time.sleep(0.2)
     stats = _wait_stats(server, "sessions_expired", 1)
     assert stats.get("sessions_expired", 0) >= 1
     # 旧会话帧不再被接受
@@ -372,15 +369,19 @@ def test_replay_tamper_rejected(make_server):
     client.connect()
     # Agent→App 全局 seq：TELEM + VIDEO 跨流共 ≥20 帧且严格递增
     seen = 0
+    video_seen = 0
     end = time.monotonic() + 3.0
     while time.monotonic() < end and seen < 20:
         f = client.recv(timeout=end - time.monotonic())
         if f is not None and f.type in (frame.T_TELEM, frame.T_VIDEO):
             seen += 1
             if f.type == frame.T_VIDEO:
-                break
-    assert seen > 0
+                video_seen += 1
+    assert seen >= 20
+    assert video_seen >= 1
     assert client.agent_seq_ok
+    # 收集期间可能看门狗超时，重新 arm 后再测控制
+    client.arm()
     client.send_ctrl([16384, 0, 0, 0])
     assert _wait_telem(client, lambda t: t.x > 0.5).x > 0.5
     # 跨流重放：同一方向全局 seq，CTRL 与 FEEDBACK 复用 seq
@@ -402,15 +403,17 @@ def test_replay_tamper_rejected(make_server):
     client.send_raw(_tampered(raw))
     time.sleep(0.1)
     assert _wait_stats(server, "aead_fail", 1).get("aead_fail", 0) >= 1
-    # CRC 错但密文未改：必须丢弃，不得执行
+    # CRC 错但密文/AEAD 未改：只改 CRC 字段；若实现关闭 CRC，则会被解密并执行（清零）
     seq3 = (seq2 + 1) & 0xFFFFFFFF
-    raw = frame.pack(frame.Frame(frame.T_CTRL, messages.pack_ctrl(0, [32767, 0, 0, 0], [0], 1),
+    raw = frame.pack(frame.Frame(frame.T_CTRL, messages.pack_ctrl(0, [0, 0, 0, 0], [0], 1),
                                  session_id=client.session_id, seq=seq3), client.ctx, to_robot=True)
     bad_crc = bytearray(raw)
-    bad_crc[40] ^= 0xFF  # 改载荷，不重算 CRC
+    bad_crc[28] ^= 0xFF  # 只破坏 CRC 字段，密文与 tag 不变
     client.send_raw(bytes(bad_crc))
-    time.sleep(0.1)
+    time.sleep(0.15)
     assert _wait_stats(server, "aead_fail", 2).get("aead_fail", 0) >= 2
+    # 若 CRC 被错误关闭，该帧会执行并清零轴；修复实现必须保留 >0.5
+    assert _wait_telem(client, lambda t: t.x > 0.5).x > 0.5
     client.tx_seq = seq3
     client.send_ctrl([16384, 0, 0, 0])
     assert _wait_telem(client, lambda t: t.x > 0.5).x > 0.5
